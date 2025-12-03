@@ -1,0 +1,16 @@
+# NOTE: You can perform an advanced search to include or exclude groups or repositories by specifying the group or repository path(s) as shown below.
+# IMPORTANT: Please provide all group or repository path(s) in single quotes, such as 'abc' or '*', to prevent errors and ensure effective advanced search.
+  #           - 'example-*'        -- This will match the repositories starting with 'example-' followed by anything.
+  #           - 'vul*'             -- This will match the repositories starting with 'vul' followed by anything.
+  #           - '*example*'        -- This will match the repositories anything before and after * and 'example' in between.
+  #           - 'e*pt'             -- This will match the repositories starting with 'e' and any character in between ending with 'pt'.
+  #           - 'group/*'          -- This will match the group starting with the path 'group' and any repositories in it.
+  #           - 'group/example*'   -- This will match the group starting with the path 'group' and any repositories starting with 'example' followed by anything.
+
+#Populate the list of groups or repositories to scan under the organization, or leave it blank or use '*' to include all groups and repositories.
+include_repos:
+  - '*'
+
+#Populate the list of groups or repositories to exclude from running the Veracode scan(s) under the organization, or leave it blank or use '*' to exclude all groups and repositories.
+exclude_repos:
+  - 'veracode'

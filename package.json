@@ -1,0 +1,19 @@
+{
+  "name": "veracode-gitlab-workflow-integration",
+  "version": "1.0.0",
+  "description": "",
+  "main": "veracodeScan.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node veracodeScan.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.3",
+    "crypto": "^1.0.1",
+    "crypto-js": "^4.2.0",
+    "execa": "5.1.1",
+    "xml2js": "^0.6.2"
+  }
+}

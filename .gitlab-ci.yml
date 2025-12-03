@@ -1,0 +1,205 @@
+image: veracode/scm-packaging:3.0.0
+
+stages:
+  - Pre Checks
+  - Build
+  - Veracode Scan
+
+variables:
+  CLI_FOLDER: "veracode-cli"
+  ARTIFACTS_FOLDER: "./veracode-artifacts"
+  PIPELINE_NAME: ''
+  SCA_SCAN_FILE: "$ARTIFACTS_FOLDER/scaScan.json"
+  PIPELINE_SCAN_FILE: "$ARTIFACTS_FOLDER/pipelineScan.json"
+  POLICY_SCAN_FILE: "$ARTIFACTS_FOLDER/policyScan.json"
+
+.artifacts_template: &artifacts_template
+  artifacts:
+    paths:
+      - $ARTIFACTS_FOLDER
+    when: always
+
+Cli Version Check:
+  stage :  Pre Checks
+  tags:
+    - ${DEFAULT_RUNNER}
+  image : alpine:latest
+  before_script:
+    - apk add --no-cache curl git
+  script: |   
+    # Define installation directory and version file path
+    export CLI_FOLDER="$(pwd)/veracode-cli"
+    export VERSION_FILE="$CLI_FOLDER/VERSION"
+    mkdir -p "${CLI_FOLDER}"
+
+    # Fetch latest Veracode CLI version
+    echo "Fetching the latest Veracode CLI version"
+    export LATEST_CLI_VERSION=$(curl -s https://tools.veracode.com/veracode-cli/LATEST_VERSION)
+
+    # Validate the fetched version
+    if [[ -z "$LATEST_CLI_VERSION" ]]; then
+      echo "Error: Failed to fetch latest version"
+      exit 1
+    fi
+    echo "LATEST CLI VERSION: ${LATEST_CLI_VERSION}"
+
+    # Get the locally installed version (if exists)
+    if [[ -f "${VERSION_FILE}" ]]; then
+      export LOCAL_CLI_VERSION=$(cat "${VERSION_FILE}")
+      echo "LOCAL CLI VERSION: ${LOCAL_CLI_VERSION}"
+    else
+      export LOCAL_CLI_VERSION="NONE"  # Default if no version exists
+    fi
+
+    # Compare versions and update only if they are different
+    if [[ "$LOCAL_CLI_VERSION" != "$LATEST_CLI_VERSION" ]]; then
+      echo "New version detected. Downloading Veracode CLI..."
+
+      export CLI_DOWNLOAD_URL="https://tools.veracode.com/veracode-cli/veracode-cli_${LATEST_CLI_VERSION}_linux_x86.tar.gz"
+      echo "CLI DOWNLOAD URL: ${CLI_DOWNLOAD_URL}"
+
+      # Download and extract the CLI
+      curl -s -L "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
+      tar -xzf "${CLI_FOLDER}/veracode-cli.tar.gz" -C "${CLI_FOLDER}"
+      
+      # Move the extracted files into the install directory (flatten structure)
+      mv "$CLI_FOLDER/veracode-cli_${LATEST_CLI_VERSION}_linux_x86"/* "$CLI_FOLDER"
+
+      # Clean up the tarball and extracted directory
+      rm -rf "$CLI_FOLDER/veracode-cli_${LATEST_CLI_VERSION}_linux_x86"
+      rm -f "$CLI_FOLDER/veracode-cli.tar.gz"
+
+      # Verify the extracted files
+      echo "Files in install directory:"
+      ls -l "$CLI_FOLDER" 
+
+      echo "Setting up Git configuration"
+      git config --global user.name "veracode"
+      git config --global user.email "cli@veracode.com"  
+
+      git remote set-url origin "https://gitlab-ci-token:${PRIVATE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+
+      echo "Checkout main"
+      git checkout main 2>/dev/null || echo "Conflicts prevent checkout, Continuing..." # Ensure we are on the main branch 
+      
+      echo "git pull origin main"
+      if git pull origin main; then  
+        git add "$CLI_FOLDER/*"
+        git commit -m "Update Veracode CLI version to ${LATEST_CLI_VERSION}"
+        echo "push origin main"
+        git push origin main || (git pull --rebase origin main && git push origin main) || echo "Push still failed, Due to other pipline updates"
+      else
+        echo "Veracode CLI is already exists."
+      fi  
+    else
+      echo "Veracode CLI is already up to date. No update required."
+    fi
+  only:
+    - main
+  artifacts:
+    paths:
+      - veracode-cli
+    expire_in: 1h   
+
+Auto Package:
+  stage: Build
+  tags:
+    - ${DEFAULT_RUNNER}
+  script: 
+    - mkdir -p clonePath
+    - cd clonePath
+    - git clone --no-checkout ${CLONE_URL}
+    - git -C ${PROJECT_PATH} checkout ${COMMIT_SHA}
+    - cd $(basename -s .git ${CLONE_URL})
+    - cd ../../
+    - ${CLI_FOLDER}/veracode package --source clonePath/* --output $ARTIFACTS_FOLDER --trust --debug
+  <<: *artifacts_template
+  rules:
+    - if: '$EXECUTE_PIPELINE == "true" || $EXECUTE_POLICY == "true" || $EXECUTE_IAC == "true" || $EXECUTE_SANDBOX == "true"'
+      when: always
+
+.veracode_scan: &veracode_scan
+  stage: Veracode Scan
+  tags:
+    - ${DEFAULT_RUNNER}
+  needs:
+    - Auto Package
+  script:
+    - npm i
+    - node ./veracodeScan.js
+  <<: *artifacts_template
+
+Pipeline:
+  <<: *veracode_scan
+  rules:
+    - if: '$EXECUTE_PIPELINE == "true"'
+      when: always
+
+Policy:
+  <<: *veracode_scan
+  rules:
+    - if: '$EXECUTE_POLICY == "true"'
+      when: always
+
+Sandbox:
+  <<: *veracode_scan
+  rules:
+    - if: '$EXECUTE_SANDBOX == "true"'
+      when: always
+
+Remove Sandbox:
+  stage: Veracode Scan
+  script:
+    - npm i
+    - node ./veracodeScan.js
+  rules:
+    - if: '$EXECUTE_REMOVE_SANDBOX == "true"'
+      when: always
+
+SCA:
+  stage: Veracode Scan
+  tags:
+    - ${DEFAULT_RUNNER}
+  script:
+    - mkdir -p $ARTIFACTS_FOLDER
+    - npm i
+    - node ./veracodeScan.js
+  <<: *artifacts_template
+  rules:
+    - if: '$EXECUTE_SCA == "true"'
+      when: always
+
+IAC:
+  stage: Veracode Scan
+  tags:
+    - ${DEFAULT_RUNNER}
+  script:
+    - mkdir -p $ARTIFACTS_FOLDER
+    - npm i
+    - node ./veracodeScan.js
+  <<: *artifacts_template
+  rules:
+    - if: '$EXECUTE_IAC == "true"'
+      when: always
+
+workflow:
+  name: '$PIPELINE_NAME'
+  rules:
+    - if: '$EXECUTE_PIPELINE == "true"'
+      variables:
+        PIPELINE_NAME: "${PROJECT_NAME} - Pipeline Scan"
+    - if: '$EXECUTE_POLICY == "true"'
+      variables:
+        PIPELINE_NAME: "${PROJECT_NAME} - Policy Scan"
+    - if: '$EXECUTE_SANDBOX == "true"'
+      variables:
+        PIPELINE_NAME: "${PROJECT_NAME} - Sandbox Scan"
+    - if: '$EXECUTE_REMOVE_SANDBOX == "true"'
+      variables:
+        PIPELINE_NAME: "${PROJECT_NAME} - Remove Sandbox Scan"
+    - if: '$EXECUTE_SCA == "true"'
+      variables:
+        PIPELINE_NAME: "${PROJECT_NAME} - SCA Scan"
+    - if: '$EXECUTE_IAC == "true"'
+      variables:
+        PIPELINE_NAME: "${PROJECT_NAME} - IAC Scan"
