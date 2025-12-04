@@ -1,5 +1,5 @@
 default:
-  runs_on: pre-prod
+  runs_on: shared
 veracode_static_scan:
   push:
     trigger: true
