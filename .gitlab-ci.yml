@@ -149,6 +149,8 @@ Sandbox:
 
 Remove Sandbox:
   stage: Veracode Scan
+  tags:
+    - ${DEFAULT_RUNNER}
   script:
     - npm i
     - node ./veracodeScan.js
