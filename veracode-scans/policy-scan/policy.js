@@ -9,7 +9,7 @@ const policyScanIssue = require('../../veracode-issues/policyScanIssue');
 const displayScanResult = require('../../displayScanResult');
 const exitStatus = true;
 
-async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, createprofile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl) {
+async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, createprofile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug) {
     try {
         const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy);
         if (invalidPolicy) {
@@ -29,7 +29,7 @@ async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, cr
         }
 
         try {
-            const result = await triggerPolicyScan(apiId, apiKey, policyResult, resApp, veracodeArtifactsDir, buildId, breakBuildOnError, userErrorMessage, createIssue);
+            const result = await triggerPolicyScan(apiId, apiKey, policyResult, resApp, veracodeArtifactsDir, buildId, breakBuildOnError, userErrorMessage, createIssue, debug);
             if (result.status === STATUS.Findings) {
                 exitOnFailure(breakBuildOnFinding);
             }
@@ -48,10 +48,12 @@ async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, cr
     }
 }
 
-async function triggerPolicyScan(apiId, apiKey, policyResult, resApp, artifactFilePath, buildId, breakBuildOnError, userErrorMessage, createIssue) {
+async function triggerPolicyScan(apiId, apiKey, policyResult, resApp, artifactFilePath, buildId, breakBuildOnError, userErrorMessage, createIssue, debug) {
     console.log(`Veracode: Policy scan executing...`);
     // let policyScanCommand = `java -jar ${__dirname}/api-wrapper-LATEST/VeracodeJavaAPI.jar -action UploadAndScanByAppId -vid ${apiId} -vkey ${apiKey} -appid ${resApp?.appId} -filepath ${artifactFilePath} -version "${buildId}" -scanpollinginterval 30 - include -autoscan false -scanallnonfataltoplevelmodules false`;
     let debugCommand = `java -jar ${__dirname}/api-wrapper-LATEST/VeracodeJavaAPI.jar -action UploadAndScanByAppId -vid *** -vkey *** -appid ${resApp?.appId} -filepath ${artifactFilePath} -version "${buildId}" -scanpollinginterval 30 - include -autoscan true -scanallnonfataltoplevelmodules true -includenewmodules true -deleteincompletescan 2`;
+    if(debug === "true")
+        debugCommand += ' -debug true';
     let scan_id = '';
     try {
         console.log(`Command to execute the policy scan : ${debugCommand}`);
@@ -68,7 +70,8 @@ async function triggerPolicyScan(apiId, apiKey, policyResult, resApp, artifactFi
             '-autoscan', 'true',
             '-scanallnonfataltoplevelmodules', 'true',
             '-includenewmodules', 'true',
-            '-deleteincompletescan', '2'
+            '-deleteincompletescan', '2',
+            ...(debug === "true" ? ['-debug', 'true'] : [])
         ];
 
         const { stdout } = await execa('java', args); 

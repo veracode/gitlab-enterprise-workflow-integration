@@ -112,10 +112,15 @@ Auto Package:
     - git -C ${PROJECT_PATH} checkout ${COMMIT_SHA}
     - cd $(basename -s .git ${CLONE_URL})
     - cd ../../
-    - ${CLI_FOLDER}/veracode package --source clonePath/* --output $ARTIFACTS_FOLDER --trust --debug
+    - |
+      if [ "$DEBUG" = "true" ]; then
+        ${CLI_FOLDER}/veracode package --source clonePath/* --output "$ARTIFACTS_FOLDER" --trust --verbose
+      else
+        ${CLI_FOLDER}/veracode package --source clonePath/* --output "$ARTIFACTS_FOLDER" --trust
+      fi
   <<: *artifacts_template
   rules:
-    - if: '$EXECUTE_PIPELINE == "true" || $EXECUTE_POLICY == "true" || $EXECUTE_IAC == "true" || $EXECUTE_SANDBOX == "true"'
+    - if: '$EXECUTE_PIPELINE == "true" || $EXECUTE_POLICY == "true" || $EXECUTE_SANDBOX == "true"'
       when: always
 
 .veracode_scan: &veracode_scan

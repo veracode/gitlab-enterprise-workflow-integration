@@ -9,7 +9,7 @@ const pipelineScanIssue = require('../../veracode-issues/pipelineScanIssue');
 const displayScanResult = require('../../displayScanResult');
 const { execSync } = require('child_process');
 
-async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue) {
+async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug) {
     const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
 
     try {
@@ -30,7 +30,7 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
         const artifacts = await fs.promises.readdir(veracodeArtifactsDir);
         const scanResults = await Promise.all(
             artifacts.map((artifact) =>
-                executePipelineScan(veracodeArtifactsDir, artifact, apiId, apiKey)
+                executePipelineScan(veracodeArtifactsDir, artifact, apiId, apiKey, debug)
             )
         );
 
@@ -122,15 +122,16 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
     }
 }
 
-async function executePipelineScan(veracodeArtifactsDir, artifactName, apiId, apiKey) {
+async function executePipelineScan(veracodeArtifactsDir, artifactName, apiId, apiKey, debug) {
     const pipelineResultFileName = `${artifactName}-` + appConfig().pipelineScanFile;
     const filteredResultFileName = `${artifactName}-` + appConfig().filteredScanFile;
 
     try {
         const artifactFilePath = path.join(veracodeArtifactsDir, artifactName);
         const pipelineScanJarPath = path.join(__dirname, 'pipeline-scan.jar');
-        const pipelineScanCommand = `java -jar ${pipelineScanJarPath} -vid ${apiId} -vkey ${apiKey} -f ${artifactFilePath} -jf ${pipelineResultFileName} -fjf ${filteredResultFileName}`;
-
+        let pipelineScanCommand = `java -jar ${pipelineScanJarPath} -vid ${apiId} -vkey ${apiKey} -f ${artifactFilePath} -jf ${pipelineResultFileName} -fjf ${filteredResultFileName}`;
+        if(debug === "true")
+             pipelineScanCommand += ' -V true';
         execSync(pipelineScanCommand, { stdio: 'inherit' });
         return { artifact: artifactName, success: true, results: [] };
     } catch (error) {

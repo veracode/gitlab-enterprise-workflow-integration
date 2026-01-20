@@ -4,9 +4,11 @@ const { attacheResult, exitOnFailure, updateErrorMessage } = require('../../util
 const scaScanIssue = require('../../veracode-issues/scaScanIssue');
 const displayScanResult = require('../../displayScanResult');
 
-async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue) {
+async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug) {
   try {
-    const command = `curl -sSL https://download.sourceclear.com/ci.sh | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --recursive --allow-dirty`;
+    let command = `curl -sSL https://download.sourceclear.com/ci.sh | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --recursive --allow-dirty`;
+    if(debug === "true")
+      command += ' --debug';
     const output = execSync(command, { encoding: 'utf-8', env: { ...process.env, SRCCLR_API_TOKEN: scaAgenToken, SRCCLR_API_URL: scaUrl }, maxBuffer: 1024 * 1024 * 10 });
     const jsonCommand = `curl -sSL https://download.sourceclear.com/ci.sh | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --json=scaScan.json --recursive --allow-dirty`;
     const jsonOutput = execSync(jsonCommand, { encoding: 'utf-8', env: { ...process.env, SRCCLR_API_TOKEN: scaAgenToken, SRCCLR_API_URL: scaUrl }, maxBuffer: 1024 * 1024 * 10 });

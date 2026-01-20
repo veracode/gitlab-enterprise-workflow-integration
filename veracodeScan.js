@@ -35,18 +35,19 @@ async function veracodeScan() {
     const breakBuildOnInvalidPolicy = process.env.BREAK_BUILD_ON_INVALID_POLICY || false;
 
     const repoUrl = process.env.PROJECT_URL;
+    const debug = process.env.DEBUG;
 
     if (executePipeline) {
         console.log(`Executing pipeline scan on ${projectName} repo for ${sourceBranch} branch`);
-        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue);
+        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug);
     }
     if (executeSandbox) {
         console.log(`Executing sandbox scan on ${projectName} repo for ${sourceBranch} branch`);
-        sandboxScan(apiId, appKey, sourceBranch, policyName, '', createProfile, ciPipelineId, appProfileName, breakBuildOnInvalidPolicy, repoUrl)
+        sandboxScan(apiId, appKey, sourceBranch, policyName, '', createProfile, ciPipelineId, appProfileName, breakBuildOnInvalidPolicy, repoUrl, debug)
     }
     if (executePolicy) {
         console.log(`Executing policy scan on ${projectName} repo for ${sourceBranch} branch`);
-        await policyScan(apiId, appKey, appProfileName, ciPipelineId, policyName, '', createProfile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl);
+        await policyScan(apiId, appKey, appProfileName, ciPipelineId, policyName, '', createProfile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug);
     }
     if (executeRemoveSandbox) {
         console.log(`Executing removed sandbox scan on ${projectName} repo for ${sourceBranch} branch`);
@@ -54,11 +55,11 @@ async function veracodeScan() {
     }
     if (executeSca) {
         console.log(`Executing sca scan on ${projectName} repo for ${sourceBranch} branch`);
-        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue);
+        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug);
     }
     if (executeIac) {
         console.log(`Executing iac scan on ${projectName} repo for ${sourceBranch} branch`);
-        await iacScan(sourceRepoCloneUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage)
+        await iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug)
     }
 }
 veracodeScan();

@@ -402,12 +402,10 @@ function iacResult(scanResult){
     let IaCVulnerabilities = extractIaCVulnerabilities(scanResult);
     let IaCMisconfigurations = extractIaCMisconfigurations(scanResult);
     let IaCSecrets = extractIaCSecrets(scanResult);
-    let IaCPolicyResults = extractIaCPolicyResults(scanResult);
     
     output += IaCVulnerabilities;
     output += IaCMisconfigurations;
     output += IaCSecrets;
-    output += IaCPolicyResults;
 
     return output;
 }
@@ -431,16 +429,17 @@ function extractIaCVulnerabilities(scanResult){
             INSTALLED     : result.artifact.version,
             FIXED_IN      : result.vulnerability.fix.versions[0] || "N/A",
             TYPE          : result.artifact.type,
+            MESSAGE       : result.vulnerability.description
         }));
     
         formattedVulnerabilities.sort((a, b) => severityRank[b.SEVERITY] - severityRank[a.SEVERITY]);
     
         output+= '<details>\n'+
         '<summary>Vulnerability Scan Details</summary>\n\n'+
-        '| Severity  | Name     | Vulnerability | Installed  | Fixed-In      | Type       |\n' +
-        '| --------  | -------- | ------------- | ---------  | --------------| ----------- |\n';
+        '| Severity  | Name     | Vulnerability | Installed  | Fixed-In      | Type        | Message        |\n' +
+        '| --------  | -------- | ------------- | ---------  | --------------| ----------- | -------------- |\n';
         formattedVulnerabilities.forEach((result) => {
-        output += `| ${result.SEVERITY} | ${result.NAME} | ${result.VULNERABILITY} | ${result.INSTALLED} | ${result["FIXED_IN"]} | ${result.TYPE} |\n`;
+        output += `| ${result.SEVERITY} | ${result.NAME} | ${result.VULNERABILITY} | ${result.INSTALLED} | ${result["FIXED_IN"]} | ${result.TYPE} | ${result.MESSAGE} |\n`;
         });
         output += '\n</details>\n';
     
@@ -449,9 +448,9 @@ function extractIaCVulnerabilities(scanResult){
 
 function extractIaCMisconfigurations(scanResults) {
         let output = "";  
-        const Misconfigurations = scanResults?.configs?.Results?.[0]?.Misconfigurations;
+        const Misconfigurations = scanResults?.configs;
       
-        if (!Misconfigurations ||  Misconfigurations.length === 0) {
+        if (Misconfigurations.length === 0) {
             output += "\n<details>\n";
             output += "<summary>Misconfiguration Details</summary>\n\n";
             output += "No Misconfigurations found.\n";
@@ -464,19 +463,21 @@ function extractIaCMisconfigurations(scanResults) {
             TITLE       : result.Title,
             ID          : result.ID,
             PROVIDER    : result.CauseMetadata.Provider,
+            MESSAGE     : result.Message === "No issues found" ? "-" : result.Message
         }));
         formattedData.sort((a, b) => severityRank[b.SEVERITY] - severityRank[a.SEVERITY]);
 
         output += '\n<details>\n' +
             '<summary>Misconfiguration Details</summary>\n\n' +
-            '| SEVERITY | TITLE    |  ID   | PROVIDER |\n' +
-            '| ------- | -------- | ----- | ---------|\n';
+            '| SEVERITY | TITLE    |  ID   | PROVIDER | MESSAGE        |\n' +
+            '| ------- | -------- | ----- | --------- | -------------- |\n';
         formattedData.forEach((result) => {
             output +=
                 `| ${result.SEVERITY} ` +
                 `| ${result.TITLE} ` +
                 `| ${result.ID} ` +
-                `| Line ${result.PROVIDER} |\n`;
+                `| Line ${result.PROVIDER} `+ 
+                `| ${result.MESSAGE} |\n`
         });   
         output += '\n</details>\n';
 
@@ -485,9 +486,9 @@ function extractIaCMisconfigurations(scanResults) {
 
 function extractIaCSecrets(scanResult){
         let output = "";
-        const IacSecreteData = scanResult?.secrets?.Results || [];
+        const IacSecreteData = scanResult?.secrets || [];
         
-        if(!IacSecreteData || IacSecreteData.length == 0 ){
+        if(IacSecreteData.length == 0){
             output += "\n<details>\n";
             output += "<summary>Secrets Scan Details</summary>\n";
             output += "No Secrets found.\n";
@@ -496,58 +497,24 @@ function extractIaCSecrets(scanResult){
         }
 
         const formattedIacSecret = IacSecreteData.map((result) => ({
-            SEVERITY      : result.Secrets[0].Severity,
-            SECRET_TYPE   : result.Secrets[0].Title,
-            FILE          : result.Target
+            SEVERITY      : result.Severity,
+            SECRET_TYPE   : result.Title,
+            FILE          : result.Target,
+            MESSAGE       : result.Match
         }));
         formattedIacSecret.sort((a, b) => severityRank[b.SEVERITY] - severityRank[a.SEVERITY]);
 
         output+= '<details>\n'+
         '<summary>Secrets Scan Details</summary>\n\n'+
-        '| Severity | SECRET_TYPE | FILE |\n' +
-        '| -------- | ----------- | -------------|\n';
+        '| Severity | SECRET_TYPE | FILE          | MESSAGE           |\n' +
+        '| -------- | ----------- | ------------- | ----------------- |\n';
         formattedIacSecret.forEach((result) => {
-        output += `| ${result.SEVERITY} | ${result.SECRET_TYPE} | ${result.FILE} |\n`;
+        output += `| ${result.SEVERITY} | ${result.SECRET_TYPE} | ${result.FILE} | ${result.MESSAGE} |\n`;
         });
         output += '\n</details>\n';
 
         return output;
 }
-
-function extractIaCPolicyResults(scanResult){
-    let output = "";
-    const IacPolicyResult = scanResult?.["policy-results"][0]?.failures || [];
-    
-    if(!IacPolicyResult|| IacPolicyResult.length == 0 ){
-        output += "<details>\n";
-        output += "<summary>Policy Evaluation Details</summary>\n";
-        output += "No Policy found.\n";
-        output += "</details>\n";
-        return output;    
-    }
-
-    const formattedIacPolicyResult = IacPolicyResult.map((result) => {
-        const severityMatch = result.msg.match(/Found (Critical|High|Medium|Low|Very_low|Informational)/);
-        const ghsaMatch = result.msg.match(/GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/);
-        return {
-            SEVERITY        : severityMatch ? severityMatch[1] : "Unknown",
-            VULNERABILITY   : ghsaMatch ? ghsaMatch[0] : "Unknown",
-            MESSAGE         : result.msg  // Or extract this from the message if it varies
-        };
-    });
-    formattedIacPolicyResult.sort((a, b) => severityRank[b.SEVERITY] - severityRank[a.SEVERITY]);
-
-    output+= '<details>\n'+
-    '<summary>Policy Evaluation Details</summary>\n\n'+
-    '| SEVERITY | VULNERABILITY | MESSAGE |\n' +
-    '| -------- | ----------- | -------------|\n';
-    formattedIacPolicyResult.forEach((result) => {
-    output += `| ${result.SEVERITY} | ${result.VULNERABILITY} | ${result.MESSAGE} |\n`;
-    });
-    output += '\n</details>';
-
-    return output;
-} 
 
 module.exports = {
     processStaticResultsXML,
