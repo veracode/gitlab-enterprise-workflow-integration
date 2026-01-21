@@ -178,10 +178,14 @@ SCA:
 
 IAC:
   stage: Veracode Scan
-  tags:
-    - ${DEFAULT_RUNNER}
   script:
+    - mkdir -p clonePath
     - mkdir -p $ARTIFACTS_FOLDER
+    # Clone repository (keeps original repo name)
+    - echo "Cloning repository..."
+    - cd clonePath
+    - git clone ${CLONE_URL}
+    - cd ..
     - npm i
     - node ./veracodeScan.js
   <<: *artifacts_template
