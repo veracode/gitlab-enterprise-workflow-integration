@@ -178,6 +178,8 @@ SCA:
 
 IAC:
   stage: Veracode Scan
+  tags:
+    - ${DEFAULT_RUNNER}
   script:
     - mkdir -p clonePath
     - mkdir -p $ARTIFACTS_FOLDER
