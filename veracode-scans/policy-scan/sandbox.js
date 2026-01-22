@@ -5,7 +5,7 @@ const { getVeracodeApplication, veracodePolicyVerification } = require('../../ut
 const execa = require('execa');
 const { exitOnFailure } = require('../../utility/utils');
 
-async function sandboxScan(apiId, apiKey, sourceBranch, policyName, teams, createprofile, buildId, appName, breakBuildOnInvalidPolicy, repoUrl) {
+async function sandboxScan(apiId, apiKey, sourceBranch, policyName, teams, createprofile, buildId, appName, breakBuildOnInvalidPolicy, repoUrl, debug) {
     let resApp;
     try {
         const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy);
@@ -32,14 +32,14 @@ async function sandboxScan(apiId, apiKey, sourceBranch, policyName, teams, creat
     }
 
     try {
-        triggerSandboxScan(apiId, apiKey, resApp, veracodeArtifactsDir, sourceBranch, buildId);
+        triggerSandboxScan(apiId, apiKey, resApp, veracodeArtifactsDir, sourceBranch, buildId, debug);
     } catch (error) {
         console.log(`Error while executing sandbox scan on ${sourceBranch} branch: `, error);
         return;
     }
 }
 
-async function triggerSandboxScan(apiId, apiKey, resApp, artifactFilePath, sourceBranch, buildId) {
+async function triggerSandboxScan(apiId, apiKey, resApp, artifactFilePath, sourceBranch, buildId, debug) {
     const sandboxName = `${veracodeConfig().sandboxScanName}${sourceBranch}`;
     const args = [
         '-jar', `${__dirname}/api-wrapper-LATEST/VeracodeJavaAPI.jar`,
@@ -56,7 +56,8 @@ async function triggerSandboxScan(apiId, apiKey, resApp, artifactFilePath, sourc
         '-autoscan', 'true',
         '-scanallnonfataltoplevelmodules', 'true',
         '-includenewmodules', 'true',
-        '-deleteincompletescan', '2'
+        '-deleteincompletescan', '2',
+        ...(debug === "true" ? ['-debug', 'true'] : [])
     ];
 
     try {
