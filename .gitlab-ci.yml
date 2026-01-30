@@ -1,6 +1,7 @@
 image: veracode/scm-packaging:3.0.0
 
 stages:
+  - Cancel Old Pipelines
   - Pre Checks
   - Build
   - Veracode Scan
@@ -18,6 +19,12 @@ variables:
     paths:
       - $ARTIFACTS_FOLDER
     when: always
+
+Cancel Old Pipelines:
+  stage: Cancel Old Pipelines
+  script:
+    - npm i
+    - node ./cancelOldPipeline.js
 
 Cli Version Check:
   stage :  Pre Checks

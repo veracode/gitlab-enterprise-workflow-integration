@@ -1,5 +1,3 @@
-debug:
-  false
 default:
   runs_on: shared
 veracode_static_scan:

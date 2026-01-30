@@ -124,4 +124,40 @@ async function createComment(projectUrl, mergeRequestId, eventName, commitSha, f
     }
 }
 
-module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment}
+async function fetchAllPipelines(hostName, veracodeProjectId) {
+    try {
+        const url = `https://${hostName}/api/v4/projects/${veracodeProjectId}/pipelines`
+        const response = await axios.get(url, {
+            ...headers,
+            params: { status: "running", per_page: 100 }
+        });
+        return response.data;
+    } catch (error) {
+        console.log("Error while fetching all pipelines", error.response?.data || error.message);
+        return [];
+    }
+}
+
+async function getPipelineVariables(hostName, veracodeProjectId, pipelineId) {
+    try {
+        const url = `https://${hostName}/api/v4/projects/${veracodeProjectId}/pipelines/${pipelineId}/variables`
+        const response = await axios.get(url, headers);
+        return response.data;
+    } catch (error) {
+        console.log("Error while fetching pipeline variable", error.response?.data || error.message);
+        return [];
+    }
+}
+
+async function cancelPipeline(hostName, veracodeProjectId, pipelineId) {
+    try {
+        const url = `https://${hostName}/api/v4/projects/${veracodeProjectId}/pipelines/${pipelineId}/cancel`
+        const response = await axios.post(url, {}, headers);
+        return response.data;
+    } catch (error) {
+        console.log("Error while fetching pipeline variable", error.response?.data || error.message);
+        return null;
+    }
+}
+
+module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment, fetchAllPipelines, getPipelineVariables, cancelPipeline}
