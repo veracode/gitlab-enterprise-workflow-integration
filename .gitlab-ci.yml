@@ -1,7 +1,6 @@
 image: veracode/scm-packaging:3.0.0
 
 stages:
-  - Cancel Old Pipelines
   - Pre Checks
   - Build
   - Veracode Scan
@@ -20,87 +19,84 @@ variables:
       - $ARTIFACTS_FOLDER
     when: always
 
-Cancel Old Pipelines:
-  stage: Cancel Old Pipelines
-  script:
-    - npm i
-    - node ./cancelOldPipeline.js
-
 Cli Version Check:
   stage :  Pre Checks
   tags:
     - ${DEFAULT_RUNNER}
   image : alpine:latest
   before_script:
-    - apk add --no-cache curl git
-  script: |   
-    # Define installation directory and version file path
-    export CLI_FOLDER="$(pwd)/veracode-cli"
-    export VERSION_FILE="$CLI_FOLDER/VERSION"
-    mkdir -p "${CLI_FOLDER}"
+    - apk add --no-cache nodejs npm curl git
+  script: 
+    - npm i
+    - node ./cancelOldPipeline.js
+    - |   
+      # Define installation directory and version file path
+      export CLI_FOLDER="$(pwd)/veracode-cli"
+      export VERSION_FILE="$CLI_FOLDER/VERSION"
+      mkdir -p "${CLI_FOLDER}"
 
-    # Fetch latest Veracode CLI version
-    echo "Fetching the latest Veracode CLI version"
-    export LATEST_CLI_VERSION=$(curl -s https://tools.veracode.com/veracode-cli/LATEST_VERSION)
+      # Fetch latest Veracode CLI version
+      echo "Fetching the latest Veracode CLI version"
+      export LATEST_CLI_VERSION=$(curl -s https://tools.veracode.com/veracode-cli/LATEST_VERSION)
 
-    # Validate the fetched version
-    if [[ -z "$LATEST_CLI_VERSION" ]]; then
-      echo "Error: Failed to fetch latest version"
-      exit 1
-    fi
-    echo "LATEST CLI VERSION: ${LATEST_CLI_VERSION}"
+      # Validate the fetched version
+      if [[ -z "$LATEST_CLI_VERSION" ]]; then
+        echo "Error: Failed to fetch latest version"
+        exit 1
+      fi
+      echo "LATEST CLI VERSION: ${LATEST_CLI_VERSION}"
 
-    # Get the locally installed version (if exists)
-    if [[ -f "${VERSION_FILE}" ]]; then
-      export LOCAL_CLI_VERSION=$(cat "${VERSION_FILE}")
-      echo "LOCAL CLI VERSION: ${LOCAL_CLI_VERSION}"
-    else
-      export LOCAL_CLI_VERSION="NONE"  # Default if no version exists
-    fi
-
-    # Compare versions and update only if they are different
-    if [[ "$LOCAL_CLI_VERSION" != "$LATEST_CLI_VERSION" ]]; then
-      echo "New version detected. Downloading Veracode CLI..."
-
-      export CLI_DOWNLOAD_URL="https://tools.veracode.com/veracode-cli/veracode-cli_${LATEST_CLI_VERSION}_linux_x86.tar.gz"
-      echo "CLI DOWNLOAD URL: ${CLI_DOWNLOAD_URL}"
-
-      # Download and extract the CLI
-      curl -s -L "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
-      tar -xzf "${CLI_FOLDER}/veracode-cli.tar.gz" -C "${CLI_FOLDER}"
-      
-      # Move the extracted files into the install directory (flatten structure)
-      mv "$CLI_FOLDER/veracode-cli_${LATEST_CLI_VERSION}_linux_x86"/* "$CLI_FOLDER"
-
-      # Clean up the tarball and extracted directory
-      rm -rf "$CLI_FOLDER/veracode-cli_${LATEST_CLI_VERSION}_linux_x86"
-      rm -f "$CLI_FOLDER/veracode-cli.tar.gz"
-
-      # Verify the extracted files
-      echo "Files in install directory:"
-      ls -l "$CLI_FOLDER" 
-
-      echo "Setting up Git configuration"
-      git config --global user.name "veracode"
-      git config --global user.email "cli@veracode.com"  
-
-      git remote set-url origin "https://gitlab-ci-token:${PRIVATE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-
-      echo "Checkout main"
-      git checkout main 2>/dev/null || echo "Conflicts prevent checkout, Continuing..." # Ensure we are on the main branch 
-      
-      echo "git pull origin main"
-      if git pull origin main; then  
-        git add "$CLI_FOLDER/*"
-        git commit -m "Update Veracode CLI version to ${LATEST_CLI_VERSION}"
-        echo "push origin main"
-        git push origin main || (git pull --rebase origin main && git push origin main) || echo "Push still failed, Due to other pipline updates"
+      # Get the locally installed version (if exists)
+      if [[ -f "${VERSION_FILE}" ]]; then
+        export LOCAL_CLI_VERSION=$(cat "${VERSION_FILE}")
+        echo "LOCAL CLI VERSION: ${LOCAL_CLI_VERSION}"
       else
-        echo "Veracode CLI is already exists."
-      fi  
-    else
-      echo "Veracode CLI is already up to date. No update required."
-    fi
+        export LOCAL_CLI_VERSION="NONE"  # Default if no version exists
+      fi
+
+      # Compare versions and update only if they are different
+      if [[ "$LOCAL_CLI_VERSION" != "$LATEST_CLI_VERSION" ]]; then
+        echo "New version detected. Downloading Veracode CLI..."
+
+        export CLI_DOWNLOAD_URL="https://tools.veracode.com/veracode-cli/veracode-cli_${LATEST_CLI_VERSION}_linux_x86.tar.gz"
+        echo "CLI DOWNLOAD URL: ${CLI_DOWNLOAD_URL}"
+
+        # Download and extract the CLI
+        curl -s -L "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
+        tar -xzf "${CLI_FOLDER}/veracode-cli.tar.gz" -C "${CLI_FOLDER}"
+        
+        # Move the extracted files into the install directory (flatten structure)
+        mv "$CLI_FOLDER/veracode-cli_${LATEST_CLI_VERSION}_linux_x86"/* "$CLI_FOLDER"
+
+        # Clean up the tarball and extracted directory
+        rm -rf "$CLI_FOLDER/veracode-cli_${LATEST_CLI_VERSION}_linux_x86"
+        rm -f "$CLI_FOLDER/veracode-cli.tar.gz"
+
+        # Verify the extracted files
+        echo "Files in install directory:"
+        ls -l "$CLI_FOLDER" 
+
+        echo "Setting up Git configuration"
+        git config --global user.name "veracode"
+        git config --global user.email "cli@veracode.com"  
+
+        git remote set-url origin "https://gitlab-ci-token:${PRIVATE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+
+        echo "Checkout main"
+        git checkout main 2>/dev/null || echo "Conflicts prevent checkout, Continuing..." # Ensure we are on the main branch 
+        
+        echo "git pull origin main"
+        if git pull origin main; then  
+          git add "$CLI_FOLDER/*"
+          git commit -m "Update Veracode CLI version to ${LATEST_CLI_VERSION}"
+          echo "push origin main"
+          git push origin main || (git pull --rebase origin main && git push origin main) || echo "Push still failed, Due to other pipline updates"
+        else
+          echo "Veracode CLI is already exists."
+        fi  
+      else
+        echo "Veracode CLI is already up to date. No update required."
+      fi
   only:
     - main
   artifacts:

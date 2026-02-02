@@ -14,24 +14,14 @@ async function cancelOldPipeline() {
     console.log(`Current branch: ${sourceBranch}`);
     
     // Fetch running pipelines
-    const pipelines = await fetchAllPipelines(hostName, projectId);
+    const pipelines = await fetchAllPipelines(hostName, projectId, pipelineName);
 
     if (!pipelines || pipelines.length === 0) {
       console.log("No running pipelines found. Nothing to cancel.");
       return;
     }
 
-    // Filter pipelines by name
-    const matchingPipelines = pipelines.filter(p => 
-      p.name && p.name.toLowerCase() === pipelineName.toLowerCase()
-    );
-
-    if (matchingPipelines.length === 0) {
-      console.log("No matching pipelines found. Nothing to cancel.");
-      return;
-    }
-
-    for (const pipeline of matchingPipelines) {
+    for (const pipeline of pipelines) {
       const pipelineId = pipeline.id;
 
       // Skip current pipeline itself

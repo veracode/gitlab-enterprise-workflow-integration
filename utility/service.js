@@ -124,18 +124,29 @@ async function createComment(projectUrl, mergeRequestId, eventName, commitSha, f
     }
 }
 
-async function fetchAllPipelines(hostName, veracodeProjectId) {
-    try {
-        const url = `https://${hostName}/api/v4/projects/${veracodeProjectId}/pipelines`
-        const response = await axios.get(url, {
-            ...headers,
-            params: { status: "running", per_page: 100 }
-        });
-        return response.data;
-    } catch (error) {
-        console.log("Error while fetching all pipelines", error.response?.data || error.message);
-        return [];
+async function fetchAllPipelines(hostName, veracodeProjectId, pipelineName) {
+    let pipelines = [];
+    let page = 1;
+    while(page) {
+        try {
+            const url = `https://${hostName}/api/v4/projects/${veracodeProjectId}/pipelines`
+            const response = await axios.get(url, {
+                ...headers,
+                params: {
+                    status: "running", 
+                    name: pipelineName,
+                    per_page: 100,
+                    page
+                }
+            });
+            pipelines.push(...response.data);
+            page = Number(response.headers['x-next-page']);
+        } catch (error) {
+            console.log("Error while fetching all pipelines", error.response?.data || error.message);
+            break;
+        }
     }
+    return pipelines;
 }
 
 async function getPipelineVariables(hostName, veracodeProjectId, pipelineId) {
