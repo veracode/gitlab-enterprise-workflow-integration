@@ -3,8 +3,9 @@ const path = require('path');
 const { attacheResult, exitOnFailure, updateErrorMessage } = require('../../utility/utils');
 const scaScanIssue = require('../../veracode-issues/scaScanIssue');
 const displayScanResult = require('../../displayScanResult');
+const { updateCommitStatus } = require('../../utility/service');
 
-async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug) {
+async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug, commitSha) {
   try {
     let command = `curl -sSL https://download.sourceclear.com/ci.sh | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --recursive --allow-dirty`;
     if(debug === "true")
@@ -22,6 +23,15 @@ async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuild
       await displayScanResult([]);
       console.log(`Veracode SCA scan executed successfully.`);
       console.log(output);
+      const pipelineName = process.env.PIPELINE_NAME ;
+      const ciPipelineUrl = process.env.CI_PIPELINE_URL;
+      const description = pipelineName+' no findings';
+      const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'success', pipelineName, ciPipelineUrl, description);
+      if (!pipelineStatusUpdateFailed) {
+          console.error("SCA Scan status update failed");
+          exitOnFailure(breakBuildOnError);
+      }
+      
     } else {
       await displayScanResult(parsedOutput.records);
       if (createIssue) {
@@ -29,11 +39,28 @@ async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuild
       }
       console.log(`Veracode SCA scan executed successfully.`);
       console.log(output);
+      const pipelineName = process.env.PIPELINE_NAME ;
+      const ciPipelineUrl = process.env.CI_PIPELINE_URL;
+      const description = pipelineName+' findings';
+      const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, description);
+      if (!pipelineStatusUpdateFailed) {
+          console.error("SCA Scan status update failed");
+          exitOnFailure(breakBuildOnError);
+      }
+      
       exitOnFailure(breakBuildOnFinding);
     }
   } catch (error) {
     error = updateErrorMessage(breakBuildOnError, userErrorMessage, error.message);
     console.error(`Error occurred during SCA scan: ${error}`);
+    const pipelineName = process.env.PIPELINE_NAME ;
+    const ciPipelineUrl = process.env.CI_PIPELINE_URL;
+    const description = pipelineName+' failed';
+    const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, description);
+    if (!pipelineStatusUpdateFailed) {
+        console.error("SCA Scan status update failed");
+        exitOnFailure(breakBuildOnError);
+    }
     exitOnFailure(breakBuildOnError);
   }
 }

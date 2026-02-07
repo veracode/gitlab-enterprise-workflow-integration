@@ -171,4 +171,42 @@ async function cancelPipeline(hostName, veracodeProjectId, pipelineId) {
     }
 }
 
-module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment, fetchAllPipelines, getPipelineVariables, cancelPipeline}
+async function updateCommitStatus(MR_SHA, STATE, PIPELINE_NAME, CI_PIPELINE_URL, DESCRIPTION) {
+    console.log('#### DEBUG - Update Commit Status ####');
+    console.log('MR_SHA:', MR_SHA);
+    console.log('STATE:', STATE);
+    console.log('PIPELINE_NAME:', PIPELINE_NAME);
+    console.log('CI_PIPELINE_URL:', CI_PIPELINE_URL);
+    console.log('DESCRIPTION:', DESCRIPTION);
+    console.log('hostName:', hostName);
+    console.log('projectId:', projectId);
+    console.log('#### DEBUG - Update Commit Status ####');
+    try {
+        const url = `https://${hostName}/api/v4/projects/${projectId}/statuses/${MR_SHA}`;
+        const formData = new URLSearchParams();
+        formData.append('state', STATE);
+        formData.append('name', PIPELINE_NAME);
+        formData.append('target_url', CI_PIPELINE_URL);
+        formData.append('description', DESCRIPTION);
+        
+        const response = await axios.post(url, formData.toString(), {
+            headers: {
+                ...headers.headers,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
+        
+        if (response.status >= 200 && response.status < 300) {
+            console.log("Commit status updated successfully");
+            return response.data;
+        } else {
+            console.error("MR couldn't be updated");
+            return null;
+        }
+    } catch (error) {
+        console.error("MR couldn't be updated", error.response?.data || error.message);
+        return null;
+    }
+}
+
+module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment, fetchAllPipelines, getPipelineVariables, cancelPipeline, updateCommitStatus}
