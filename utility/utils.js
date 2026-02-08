@@ -629,7 +629,7 @@ async function pipelineResult(scanResult, branch, projectUrl){
         </tr>
         <tr>
         <td colspan="4">
-        <details><summary>Flaw Details</summary> ${result.description} </details>
+        <details><summary>Flaw Details</summary> ${result.display_text} </details>
         </td>
         </tr>`;
     }
