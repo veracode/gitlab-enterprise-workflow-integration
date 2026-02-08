@@ -106,7 +106,96 @@ async function createComment(projectUrl, mergeRequestId, eventName, commitSha, f
     try {
         let reqData;
         let url;
+        
+        // For merge requests, check if a matching comment already exists
         if(eventName === appConfig().pullRequestEventName){
+            // Extract scan type and expected patterns from the new content
+            const contentLines = formattedContent.split('\n');
+            const firstLine = contentLines[0] || '';
+            
+            // Extract scan type from first line (e.g., "Pipeline Scan completed." or "<a>Pipeline Scan completed.</a>")
+            const scanTypeMatch = firstLine.match(/(\w+)\s+Scan\s+completed/);
+            const scanType = scanTypeMatch ? scanTypeMatch[1] : '';
+            
+            // Expected scan message patterns (these appear in the content)
+            const expectedPatterns = [
+                '**Veracode IaC/Secrets Scan found vulnerabilities/misconfigurations/secrets**',
+                '**Veracode SCA Scan found vulnerabilities**',
+                '**Veracode Static Scan found flaws**'
+            ];
+            
+            // Check if content contains Veracode image and one of the expected patterns
+            const hasVeracodeImage = formattedContent.includes('![Veracode]') || formattedContent.includes('veracodePlatformLogoSmall.png');
+            const hasExpectedPattern = expectedPatterns.some(pattern => formattedContent.includes(pattern));
+            
+            // Only check for existing comments if we have a valid pattern
+            if (scanType && hasVeracodeImage && hasExpectedPattern) {
+                try {
+                    // Fetch all notes for this merge request
+                    const notesUrl = `https://${hostName}/api/v4/projects/${projectId}/merge_requests/${mergeRequestId}/notes`;
+                    let allNotes = [];
+                    let page = 1;
+                    
+                    while (true) {
+                        const response = await axios.get(notesUrl, {
+                            ...headers,
+                            params: {
+                                per_page: 100,
+                                page: page
+                            }
+                        });
+                        
+                        const notes = response.data;
+                        if (notes.length === 0) break;
+                        
+                        allNotes = [...allNotes, ...notes];
+                        
+                        const totalPages = parseInt(response.headers['x-total-pages'] || '1');
+                        if (page >= totalPages) break;
+                        page++;
+                    }
+                    
+                    // Find matching comment by checking:
+                    // 1. First line contains scan type + "Scan completed"
+                    // 2. Contains Veracode image
+                    // 3. Contains one of the expected scan message patterns
+                    const matchingNote = allNotes.find(note => {
+                        if (!note.body) return false;
+                        
+                        const noteLines = note.body.split('\n');
+                        const noteFirstLine = noteLines[0] || '';
+                        
+                        // Check if first line matches scan type pattern
+                        const noteScanTypeMatch = noteFirstLine.match(/(\w+)\s+Scan\s+completed/);
+                        const noteScanType = noteScanTypeMatch ? noteScanTypeMatch[1] : '';
+                        
+                        // Check if note contains Veracode image
+                        const noteHasImage = note.body.includes('![Veracode]') || note.body.includes('veracodePlatformLogoSmall.png');
+                        
+                        // Check if note contains one of the expected patterns
+                        const noteMatchesPattern = expectedPatterns.some(pattern => note.body.includes(pattern));
+                        
+                        // Match if scan type matches, has image, and matches pattern
+                        return noteScanType === scanType && noteHasImage && noteMatchesPattern;
+                    });
+                    
+                    if (matchingNote) {
+                        // Update existing comment
+                        const updateUrl = `https://${hostName}/api/v4/projects/${projectId}/merge_requests/${mergeRequestId}/notes/${matchingNote.id}`;
+                        reqData = {
+                            body: formattedContent
+                        };
+                        await axios.put(updateUrl, reqData, headers);
+                        console.log(`Updated existing comment (note ID: ${matchingNote.id}) under the ${projectUrl} project for ${infoText}`);
+                        return;
+                    }
+                } catch (error) {
+                    console.log(`Error while checking for existing comments, will create new one:`, error.response?.data || error.message);
+                    // Continue to create new comment if check fails
+                }
+            }
+            
+            // Create new comment (either no match found or not a merge request with expected pattern)
             url = `https://${hostName}/api/v4/projects/${projectId}/merge_requests/${mergeRequestId}/notes`
             reqData = {
                 body: formattedContent
@@ -209,4 +298,181 @@ async function updateCommitStatus(MR_SHA, STATE, PIPELINE_NAME, CI_PIPELINE_URL,
     }
 }
 
-module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment, fetchAllPipelines, getPipelineVariables, cancelPipeline, updateCommitStatus}
+// Helper function to calculate similarity between two strings (simple Levenshtein-like)
+function calculateSimilarity(str1, str2) {
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    if (longer.length === 0) return 1.0;
+    
+    const distance = levenshteinDistance(longer.toLowerCase(), shorter.toLowerCase());
+    return (longer.length - distance) / longer.length;
+}
+
+// Simple Levenshtein distance calculation
+function levenshteinDistance(str1, str2) {
+    const matrix = [];
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    return matrix[str2.length][str1.length];
+}
+
+async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null) {
+    try {
+        if (!filePath || !branch || !projectUrl) {
+            console.log("Error: Missing required parameters for getSourceFilePath");
+            return null;
+        }
+
+        // Extract filename from the path
+        const fileName = filePath.split('/').pop() || filePath.split('\\').pop();
+        const normalizedFilePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+        
+        console.log('#### Debug - getSourceFilePath - Fuzzy Search ####');
+        console.log('Searching for file:', fileName);
+        console.log('Original path:', filePath);
+        console.log('Branch:', branch);
+        console.log('#### Debug - getSourceFilePath - Fuzzy Search ####');
+
+        // Get repository tree recursively to search for files
+        let foundFilePath = null;
+        try {
+            const treeUrl = `https://${hostName}/api/v4/projects/${encodeURIComponent(projectId)}/repository/tree`;
+            let allFiles = [];
+            let page = 1;
+            const perPage = 100;
+
+            // Fetch all files recursively
+            while (true) {
+                const response = await axios.get(treeUrl, {
+                    ...headers,
+                    params: {
+                        ref: branch,
+                        recursive: true,
+                        per_page: perPage,
+                        page: page
+                    }
+                });
+
+                const files = response.data.filter(item => item.type === 'blob');
+                allFiles = allFiles.concat(files);
+
+                // Check if there are more pages
+                const totalPages = parseInt(response.headers['x-total-pages'] || '1');
+                if (page >= totalPages) break;
+                page++;
+            }
+
+            console.log(`Found ${allFiles.length} files in repository`);
+
+            // First, try exact match
+            let exactMatch = allFiles.find(file => 
+                file.path === normalizedFilePath || 
+                file.path.endsWith(normalizedFilePath) ||
+                file.path === filePath
+            );
+
+            if (exactMatch) {
+                foundFilePath = exactMatch.path;
+                console.log(`Exact match found: ${foundFilePath}`);
+            } else {
+                // Try to find by filename
+                let filenameMatches = allFiles.filter(file => 
+                    file.name === fileName || 
+                    file.name.toLowerCase() === fileName.toLowerCase()
+                );
+
+                if (filenameMatches.length === 1) {
+                    foundFilePath = filenameMatches[0].path;
+                    console.log(`Single filename match found: ${foundFilePath}`);
+                } else if (filenameMatches.length > 1) {
+                    // Multiple files with same name - use fuzzy matching on path
+                    let bestMatch = null;
+                    let bestScore = 0;
+
+                    for (const file of filenameMatches) {
+                        // Calculate similarity between original path and found path
+                        const pathSimilarity = calculateSimilarity(normalizedFilePath, file.path);
+                        if (pathSimilarity > bestScore) {
+                            bestScore = pathSimilarity;
+                            bestMatch = file;
+                        }
+                    }
+
+                    if (bestMatch && bestScore > 0.3) { // Threshold for similarity
+                        foundFilePath = bestMatch.path;
+                        console.log(`Fuzzy match found (score: ${bestScore.toFixed(2)}): ${foundFilePath}`);
+                    } else {
+                        // Use the first match if no good fuzzy match
+                        foundFilePath = filenameMatches[0].path;
+                        console.log(`Using first filename match: ${foundFilePath}`);
+                    }
+                } else {
+                    // No exact filename match - try fuzzy search on all files
+                    let bestMatch = null;
+                    let bestScore = 0;
+
+                    for (const file of allFiles) {
+                        const nameSimilarity = calculateSimilarity(fileName, file.name);
+                        const pathSimilarity = calculateSimilarity(normalizedFilePath, file.path);
+                        const combinedScore = (nameSimilarity * 0.7) + (pathSimilarity * 0.3);
+
+                        if (combinedScore > bestScore) {
+                            bestScore = combinedScore;
+                            bestMatch = file;
+                        }
+                    }
+
+                    if (bestMatch && bestScore > 0.5) { // Threshold for fuzzy match
+                        foundFilePath = bestMatch.path;
+                        console.log(`Fuzzy match found (score: ${bestScore.toFixed(2)}): ${foundFilePath}`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.log(`Error searching repository tree: ${error.response?.data || error.message}`);
+            // Fallback to original path if search fails
+            foundFilePath = normalizedFilePath;
+        }
+
+        // If no match found, use original path
+        if (!foundFilePath) {
+            console.log(`No match found, using original path: ${normalizedFilePath}`);
+            foundFilePath = normalizedFilePath;
+        }
+
+        // Encode the file path for URL
+        const encodedFilePath = foundFilePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        
+        // Construct the GitLab blob URL
+        let fileUrl = `${projectUrl}/-/blob/${encodeURIComponent(branch)}/${encodedFilePath}`;
+        
+        if (lineNumber) {
+            fileUrl += `#L${lineNumber}`;
+        }
+
+        console.log(`Final file URL: ${fileUrl}`);
+        return fileUrl;
+    } catch (error) {
+        console.log("Error constructing source file path:", error.message);
+        return null;
+    }
+}
+
+module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment, fetchAllPipelines, getPipelineVariables, cancelPipeline, updateCommitStatus, getSourceFilePath}

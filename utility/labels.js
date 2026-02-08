@@ -1,32 +1,32 @@
 const VERACODE_FLAW_LABELS = {
     "Very High": {
         'name': 'VeracodeFlaw: Very High',
-        'color': '#A90533',
+        'color': '#D92B85',
         'description': 'A Veracode Flaw, Very High severity',
     },
     High: {
         'name': 'VeracodeFlaw: High',
-        'color': '#DD3B35',
+        'color': '#E61F25',
         'description': 'A Veracode Flaw, High severity'
     },
     Medium: {
         'name': 'VeracodeFlaw: Medium',
-        'color': '#FF7D00',
+        'color': '#FD7333',
         'description': 'A Veracode Flaw, Medium severity'
     },
     Low: {
         'name': 'VeracodeFlaw: Low',
-        'color': '#FFBE00',
+        'color': '#FFCC33',
         'description': 'A Veracode Flaw, Low severity'
     },
     "Very Low":{
         'name': 'VeracodeFlaw: Very Low',
-        'color': '#33ADD2',
+        'color': '#C9DA2C',
         'description': 'A Veracode Flaw, Very Low severity',
     },
     Informational: {
         'name': 'VeracodeFlaw: Informational',
-        'color': '#0270D3',
+        'color': '#8DBD3E',
         'description': 'A Veracode Flaw, Informational severity',
     },
     Unknown: {

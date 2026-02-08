@@ -13,17 +13,18 @@ async function displayScanResult(scanResult, warningMessage = "") {
     if (eventName === appConfig().pullRequestEventName || eventName === appConfig().pushEventName) {
         try {
             if ((scanType === "IaC" && Object.entries(scanResult).length > 0) || scanResult.length > 0) {
-                let formattedContent = scanType === 'SCA' ? scaResult(scanResult[0]) : scanType === 'Pipeline' ? pipelineResult(scanResult) : scanType === 'IaC' ? iacResult(scanResult) : policyResult(scanResult);
+                const sourceBranch = process.env.SOURCE_BRANCH;
+                let formattedContent = scanType === 'SCA' ? scaResult(scanResult[0]) : scanType === 'Pipeline' ? await pipelineResult(scanResult, sourceBranch, projectUrl) : scanType === 'IaC' ? iacResult(scanResult) : policyResult(scanResult);
                 const wikiContent = `${scanType} Scan completed. :white_check_mark:\n\n` + formattedContent;
                 const createWikiResponse = await createWikiPage(scanType, projectUrl, wikiContent);
-                const commentContent = createWikiResponse.hasOwnProperty('wikiUrl') && createWikiResponse?.wikiUrl !== "" ? `<a href=${createWikiResponse.wikiUrl} target="_blank">${scanType} Scan completed.</a> :white_check_mark:\n\n` + formattedContent : `${scanType} Scan completed. :white_check_mark:\n\n` + formattedContent;
+                const commentContent = createWikiResponse.hasOwnProperty('wikiUrl') && createWikiResponse?.wikiUrl !== "" ? `<a href=${createWikiResponse.wikiUrl} target="_blank">${scanType} Scan completed.</a>\n\n` + formattedContent : `${scanType} Scan completed.\n\n` + formattedContent;
                 await createComment(projectUrl, mergeRequestId, eventName, commitSha, commentContent);
             } else {
                 let commentContent = "";
                 if (warningMessage) {
-                    commentContent = `${scanType} Scan completed. :warning:\n\n` + `${warningMessage}\n`;
+                    commentContent = `${scanType} Scan completed.\n\n` + `${warningMessage}\n`;
                 } else {
-                    commentContent = `${scanType} Scan completed. :white_check_mark:\n\n` + 'No Vulnerability found.\n';
+                    commentContent = `${scanType} Scan completed.\n\n` + 'No Vulnerability found.\n';
                 }
                 await createComment(projectUrl, mergeRequestId, eventName, commitSha, commentContent);
 
