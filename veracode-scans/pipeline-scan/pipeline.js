@@ -126,7 +126,7 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
             const pipelineName = process.env.PIPELINE_NAME ;
             const ciPipelineUrl = process.env.CI_PIPELINE_URL;
             const description = pipelineName+' - no findings';
-            const pipelineStatusUpdateStart = await updateCommitStatus(commitSha, 'success', 'pipelineName', ciPipelineUrl, description);
+            const pipelineStatusUpdateStart = await updateCommitStatus(commitSha, 'success', pipelineName, ciPipelineUrl, description);
             if (!pipelineStatusUpdateStart) {
                 console.error("Pipeline status update failed");
                 exitOnFailure(breakBuildOnError);
