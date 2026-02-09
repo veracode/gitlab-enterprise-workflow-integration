@@ -10,21 +10,21 @@ const pipelineScanIssue = require('../../veracode-issues/pipelineScanIssue');
 const displayScanResult = require('../../displayScanResult');
 const { execSync } = require('child_process');
 
-async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug, commitSha) {
+async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug, commitSha, pipelineName, ciPipelineUrl) {
     const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
 
     try {
         const isCredentialValid = await validateCredential(apiId, apiKey);
 
         if (!isCredentialValid) {
-            await displayScanResult([], "Veracode credentials are invalid or expired.");
+            await displayScanResult([], "Veracode credentials are invalid or expired.", debug);
             exitOnFailure(breakBuildOnError);
             return;
         }
 
         const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy);
         if (invalidPolicy) {
-            await displayScanResult([], "Invalid Veracode Policy name.");
+            await displayScanResult([], "Invalid Veracode Policy name.", debug);
             exitOnFailure(breakBuildOnInvalidPolicy);
         }
 
@@ -97,7 +97,7 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
         };
 
         if (filteredResult.findings.length > 0) {
-            await displayScanResult(filteredResult.findings);
+            await displayScanResult(filteredResult.findings, "", debug);
 
             if (createIssue) {
                 await pipelineScanIssue(filteredResult);
@@ -106,10 +106,8 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
             pipelineResult.result = JSON.stringify(filteredResult, null, 2);
             pipelineResult.status = STATUS.Findings;
             pipelineResult.message = 'Flaws detected in the repository';
-            const pipelineName = process.env.PIPELINE_NAME ;
-            const ciPipelineUrl = process.env.CI_PIPELINE_URL;
             const description = pipelineName+' findings';
-            const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, description);
+            const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, description, debug);
             if (!pipelineStatusUpdateFailed) {
                 console.error("Pipeline status update failed");
                 exitOnFailure(breakBuildOnError);
@@ -119,14 +117,12 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
 
             return pipelineResult;
         } else {
-            await displayScanResult([]);
+            await displayScanResult([], "", debug);
             console.log('No pipeline findings, exiting and updating the GitLab check status to success');
             pipelineResult.message = 'No pipeline findings.';
             pipelineResult.status = STATUS.Success;
-            const pipelineName = process.env.PIPELINE_NAME ;
-            const ciPipelineUrl = process.env.CI_PIPELINE_URL;
             const description = pipelineName+' - no findings';
-            const pipelineStatusUpdateStart = await updateCommitStatus(commitSha, 'success', pipelineName, ciPipelineUrl, description);
+            const pipelineStatusUpdateStart = await updateCommitStatus(commitSha, 'success', pipelineName, ciPipelineUrl, description, debug);
             if (!pipelineStatusUpdateStart) {
                 console.error("Pipeline status update failed");
                 exitOnFailure(breakBuildOnError);

@@ -260,30 +260,29 @@ async function cancelPipeline(hostName, veracodeProjectId, pipelineId) {
     }
 }
 
-async function updateCommitStatus(MR_SHA, STATE, PIPELINE_NAME, CI_PIPELINE_URL, DESCRIPTION) {
-    console.log('#### DEBUG - Update Commit Status ####');
-    console.log('MR_SHA:', MR_SHA);
-    console.log('STATE:', STATE);
-    console.log('PIPELINE_NAME:', PIPELINE_NAME);
-    console.log('CI_PIPELINE_URL:', CI_PIPELINE_URL);
-    console.log('DESCRIPTION:', DESCRIPTION);
-    console.log('hostName:', hostName);
-    console.log('projectId:', projectId);
-    console.log('#### DEBUG - Update Commit Status ####');
+async function updateCommitStatus(MR_SHA, STATE, PIPELINE_NAME, CI_PIPELINE_URL, DESCRIPTION, DEBUG) {
+    if (DEBUG === "true") {
+        console.log('#### DEBUG - Update Commit Status ####');
+        console.log('MR_SHA:', MR_SHA);
+        console.log('STATE:', STATE);
+        console.log('PIPELINE_NAME:', PIPELINE_NAME);
+        console.log('CI_PIPELINE_URL:', CI_PIPELINE_URL);
+        console.log('DESCRIPTION:', DESCRIPTION);
+        console.log('hostName:', hostName);
+        console.log('projectId:', projectId);
+        console.log('#### DEBUG - Update Commit Status ####');
+    }
+
     try {
         const url = `https://${hostName}/api/v4/projects/${projectId}/statuses/${MR_SHA}`;
-        const formData = new URLSearchParams();
-        formData.append('state', STATE);
-        formData.append('name', PIPELINE_NAME);
-        formData.append('target_url', CI_PIPELINE_URL);
-        formData.append('description', DESCRIPTION);
+        const reqData = {
+            state: STATE,
+            name: PIPELINE_NAME,
+            target_url: CI_PIPELINE_URL,
+            description: DESCRIPTION
+        };
         
-        const response = await axios.post(url, formData.toString(), {
-            headers: {
-                ...headers.headers,
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        });
+        const response = await axios.post(url, reqData, headers);
         
         if (response.status >= 200 && response.status < 300) {
             console.log("Commit status updated successfully");
@@ -333,7 +332,7 @@ function levenshteinDistance(str1, str2) {
     return matrix[str2.length][str1.length];
 }
 
-async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null) {
+async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null, debug = null) {
     try {
         if (!filePath || !branch || !projectUrl) {
             console.log("Error: Missing required parameters for getSourceFilePath");
@@ -344,11 +343,13 @@ async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop();
         const normalizedFilePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
         
-        console.log('#### Debug - getSourceFilePath - Fuzzy Search ####');
-        console.log('Searching for file:', fileName);
-        console.log('Original path:', filePath);
-        console.log('Branch:', branch);
-        console.log('#### Debug - getSourceFilePath - Fuzzy Search ####');
+        if (debug === "true") {
+            console.log('#### Debug - getSourceFilePath - Fuzzy Search ####');
+            console.log('Searching for file:', fileName);
+            console.log('Original path:', filePath);
+            console.log('Branch:', branch);
+            console.log('#### Debug - getSourceFilePath - Fuzzy Search ####');
+        }
 
         // Get repository tree recursively to search for files
         let foundFilePath = null;
@@ -379,7 +380,9 @@ async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null
                 page++;
             }
 
-            console.log(`Found ${allFiles.length} files in repository`);
+            if (debug === "true") {
+                console.log(`Found ${allFiles.length} files in repository`);
+            }
 
             // First, try exact match
             let exactMatch = allFiles.find(file => 
@@ -390,7 +393,9 @@ async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null
 
             if (exactMatch) {
                 foundFilePath = exactMatch.path;
-                console.log(`Exact match found: ${foundFilePath}`);
+                if (debug === "true") {
+                    console.log(`Exact match found: ${foundFilePath}`);
+                }
             } else {
                 // Try to find by filename
                 let filenameMatches = allFiles.filter(file => 
@@ -400,7 +405,9 @@ async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null
 
                 if (filenameMatches.length === 1) {
                     foundFilePath = filenameMatches[0].path;
-                    console.log(`Single filename match found: ${foundFilePath}`);
+                    if (debug === "true") {
+                        console.log(`Single filename match found: ${foundFilePath}`);
+                    }
                 } else if (filenameMatches.length > 1) {
                     // Multiple files with same name - use fuzzy matching on path
                     let bestMatch = null;
@@ -417,11 +424,15 @@ async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null
 
                     if (bestMatch && bestScore > 0.3) { // Threshold for similarity
                         foundFilePath = bestMatch.path;
-                        console.log(`Fuzzy match found (score: ${bestScore.toFixed(2)}): ${foundFilePath}`);
+                        if (debug === "true") {
+                            console.log(`Fuzzy match found (score: ${bestScore.toFixed(2)}): ${foundFilePath}`);
+                        }
                     } else {
                         // Use the first match if no good fuzzy match
                         foundFilePath = filenameMatches[0].path;
-                        console.log(`Using first filename match: ${foundFilePath}`);
+                        if (debug === "true") {
+                            console.log(`Using first filename match: ${foundFilePath}`);
+                        }
                     }
                 } else {
                     // No exact filename match - try fuzzy search on all files
@@ -441,19 +452,25 @@ async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null
 
                     if (bestMatch && bestScore > 0.5) { // Threshold for fuzzy match
                         foundFilePath = bestMatch.path;
-                        console.log(`Fuzzy match found (score: ${bestScore.toFixed(2)}): ${foundFilePath}`);
+                        if (debug === "true") {
+                            console.log(`Fuzzy match found (score: ${bestScore.toFixed(2)}): ${foundFilePath}`);
+                        }
                     }
                 }
             }
         } catch (error) {
-            console.log(`Error searching repository tree: ${error.response?.data || error.message}`);
+            if (debug === "true") {
+                console.log(`Error searching repository tree: ${error.response?.data || error.message}`);
+            }
             // Fallback to original path if search fails
             foundFilePath = normalizedFilePath;
         }
 
         // If no match found, use original path
         if (!foundFilePath) {
-            console.log(`No match found, using original path: ${normalizedFilePath}`);
+            if (debug === "true") {
+                console.log(`No match found, using original path: ${normalizedFilePath}`);
+            }
             foundFilePath = normalizedFilePath;
         }
 
@@ -467,7 +484,9 @@ async function getSourceFilePath(filePath, branch, projectUrl, lineNumber = null
             fileUrl += `#L${lineNumber}`;
         }
 
-        console.log(`Final file URL: ${fileUrl}`);
+        if (debug === "true") {
+            console.log(`Final file URL: ${fileUrl}`);
+        }
         return fileUrl;
     } catch (error) {
         console.log("Error constructing source file path:", error.message);

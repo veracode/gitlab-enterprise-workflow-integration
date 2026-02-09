@@ -1,7 +1,7 @@
 const { createWikiPage, createComment } = require('./utility/service');
 const { scaResult, pipelineResult, policyResult, iacResult } = require('./utility/utils');
 const { appConfig } = require('./config');
-async function displayScanResult(scanResult, warningMessage = "") {
+async function displayScanResult(scanResult, warningMessage = "", debug = null) {
     const executePipeline = process.env.EXECUTE_PIPELINE;
     const executeSca = process.env.EXECUTE_SCA;
     const executeIac = process.env.EXECUTE_IAC;
@@ -14,7 +14,7 @@ async function displayScanResult(scanResult, warningMessage = "") {
         try {
             if ((scanType === "IaC" && Object.entries(scanResult).length > 0) || scanResult.length > 0) {
                 const sourceBranch = process.env.SOURCE_BRANCH;
-                let formattedContent = scanType === 'SCA' ? scaResult(scanResult[0]) : scanType === 'Pipeline' ? await pipelineResult(scanResult, sourceBranch, projectUrl) : scanType === 'IaC' ? iacResult(scanResult) : policyResult(scanResult);
+                let formattedContent = scanType === 'SCA' ? scaResult(scanResult[0]) : scanType === 'Pipeline' ? await pipelineResult(scanResult, sourceBranch, projectUrl, debug) : scanType === 'IaC' ? iacResult(scanResult) : policyResult(scanResult);
                 const wikiContent = `${scanType} Scan completed. :white_check_mark:\n\n` + formattedContent;
                 const createWikiResponse = await createWikiPage(scanType, projectUrl, wikiContent);
                 const commentContent = createWikiResponse.hasOwnProperty('wikiUrl') && createWikiResponse?.wikiUrl !== "" ? `<a href=${createWikiResponse.wikiUrl} target="_blank">${scanType} Scan completed.</a>\n\n` + formattedContent : `${scanType} Scan completed.\n\n` + formattedContent;

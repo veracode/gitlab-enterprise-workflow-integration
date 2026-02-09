@@ -565,9 +565,35 @@ function initialScanInfo(scanType = 'Pipeline', scanResults = null, severityColo
 }
 
 function scaResult(scanResult){
-    const vulnerabilities = scanResult.vulnerabilities.sort((a,b)=>  b.cvss3Score - a.cvss3Score);
     const libraries = scanResult.libraries;
     const projectUrl = process.env.CI_PROJECT_URL || process.env.PROJECT_URL;
+    
+    // Sort vulnerabilities by severity (Very High/Critical first)
+    // Map normalized severity to severityRank keys
+    const getSeverityRank = (severity) => {
+        const normalized = normalizeSeverity(severity);
+        // Map normalized severity to severityRank keys
+        if (normalized === 'Critical') return severityRank.CRITICAL;
+        if (normalized === 'High') return severityRank.HIGH;
+        if (normalized === 'Medium') return severityRank.MEDIUM;
+        if (normalized === 'Low') return severityRank.LOW;
+        if (normalized === 'Very Low') return severityRank.VERY_LOW;
+        if (normalized === 'Informational') return severityRank.INFORMATIONAL;
+        return 0;
+    };
+    
+    const vulnerabilities = scanResult.vulnerabilities.sort((a, b) => {
+        const severityA = scaSeverityType(a.cvss3Score);
+        const severityB = scaSeverityType(b.cvss3Score);
+        const rankA = getSeverityRank(severityA);
+        const rankB = getSeverityRank(severityB);
+        // If same rank, sort by CVSS score as tiebreaker
+        if (rankB === rankA) {
+            return b.cvss3Score - a.cvss3Score;
+        }
+        return rankB - rankA; // Descending order (highest severity first)
+    });
+    
     let output = initialScanInfo('SCA', scanResult, null, projectUrl);
     output+= '<details>\n'+
     '<summary>Scan Details</summary>\n\n'+
@@ -593,11 +619,17 @@ function scaResult(scanResult){
 
 const { getSourceFilePath: getSourceFilePathService } = require('./service');
 
-async function getSourceFilePath(filePath, branch, projectUrl, lineNumber) {
-    return await getSourceFilePathService(filePath, branch, projectUrl, lineNumber);
+async function getSourceFilePath(filePath, branch, projectUrl, lineNumber, debug) {
+    return await getSourceFilePathService(filePath, branch, projectUrl, lineNumber, debug);
 }
-async function pipelineResult(scanResult, branch, projectUrl){
+async function pipelineResult(scanResult, branch, projectUrl, debug){
     let output = initialScanInfo('Pipeline', scanResult, null, projectUrl, branch);
+    
+    // Sort results by severity (Very High/Critical first)
+    const sortedResults = [...scanResult].sort((a, b) => {
+        // Severity is numeric: 0=Informational, 1=Very Low, 2=Low, 3=Medium, 4=High, 5=Critical
+        return b.severity - a.severity; // Descending order (highest severity first)
+    });
     
     output+= '<details>\n'+
     '<summary>Scan Details</summary>\n\n'+
@@ -612,10 +644,10 @@ async function pipelineResult(scanResult, branch, projectUrl){
     '</thead>'+
     '<tbody>';
 
-    for (const result of scanResult) {
+    for (const result of sortedResults) {
         const filePath = result.files.source_file.file;
         const lineNumber = result.files.source_file.line;
-        const sourceFileLink = await getSourceFilePath(filePath, branch, projectUrl, lineNumber);
+        const sourceFileLink = await getSourceFilePath(filePath, branch, projectUrl, lineNumber, debug);
         const displayLink = sourceFileLink || `${filePath}:${lineNumber}`;
         const severityText = severityType(result.severity);
         const severityDisplay = `${getColoredIndicator(severityText, projectUrl)}`;
@@ -639,12 +671,19 @@ async function pipelineResult(scanResult, branch, projectUrl){
 
 function policyResult(scanResult){
     const projectUrl = process.env.CI_PROJECT_URL || process.env.PROJECT_URL;
+    
+    // Sort results by severity (Very High/Critical first)
+    const sortedResults = [...scanResult].sort((a, b) => {
+        // Severity is numeric: 0=Informational, 1=Very Low, 2=Low, 3=Medium, 4=High, 5=Critical
+        return b.static.severity - a.static.severity; // Descending order (highest severity first)
+    });
+    
     let output = initialScanInfo('Policy', null, null, projectUrl);
     output+= '<details>\n'+
     '<summary>Scan Details</summary>\n\n'+
     '| CWE ID | Severity | Issue Type | Category | Source File |\n' +
     '| ------ | -------- | ---------- | -------- | ----------- |\n';
-    scanResult.forEach((result) => {
+    sortedResults.forEach((result) => {
         const severityText = severityType(result.static.severity);
         const severityDisplay = `${getColoredIndicator(severityText, projectUrl)} ${severityText}`;
     output +=
