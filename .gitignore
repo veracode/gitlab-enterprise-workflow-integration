@@ -1,2 +1,3 @@
 .gitlab-ci.yml.bck
 node_modules/*
+imgs/.DS_Store
