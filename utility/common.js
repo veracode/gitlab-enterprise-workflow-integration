@@ -264,8 +264,8 @@ async function getVeracodePolicyByName(vid, vkey, policyName) {
 async function getPolicyByName(vid, vkey, policyName) {
     const resource = {
         resourceUri: veracodeConfig().policyUri,
-        queryAttribute: 'name',
-        queryValue: encodeURIComponent(policyName)
+        queryAttribute1: 'name',
+        queryValue1: encodeURIComponent(policyName)
     };
     const response = await getResourceByAttribute(vid, vkey, resource);
     return response;
@@ -527,6 +527,7 @@ module.exports = {
     deleteResourceById,
     getApplicationFindings,
     veracodePolicyVerification,
+    getPolicyByName,
     getLatestVersion,
     downloadAndExtractCli,
     setScanResultError,
