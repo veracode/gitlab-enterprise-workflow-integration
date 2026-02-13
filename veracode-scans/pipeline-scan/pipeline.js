@@ -51,7 +51,6 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
 
             // Loop through each result file in the failed scan only if the result file is *filtered_results.json
             for (const resultFileName of failedScan.results) {
-                console.log('resultFileName: ', resultFileName);
                 // Only process files that include "filtered_results.json"
                 if (!resultFileName.includes('filtered_results.json')) {
                     console.log(`Skipping ${resultFileName} - not a filtered_results.json file`);
@@ -67,7 +66,6 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
                     // Read and parse the result file
                     let rawData = fs.readFileSync(resultFileName);
                     let resultsJSON = JSON.parse(rawData.toString());
-                    console.log('resultsJSON: ', JSON.stringify(resultsJSON));
                     // Awaiting async operations for upload and flaw mitigation
                     await uploadArtifact(veracodeArtifactsDir, artifactName, simplifiedFileName(resultFileName), JSON.stringify(resultsJSON, null, 2));
                     const isFilterMitigatedFlaws = filterMitigatedFlaws === 'true' ? true : filterMitigatedFlaws === 'false' ? false : filterMitigatedFlaws;
