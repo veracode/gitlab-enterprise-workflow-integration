@@ -305,7 +305,7 @@ async function getApplicationFindings(appGuid, vid, vkey) {
     if (!findingsResponse._embedded) {
         console.log('No Policy scan found, lets look for sandbox scan findings');
         const getSandboxGUID = {
-            resourceUri: `${veracodeConfig().findingsUri}/${appGuid}/sandboxes`,
+            resourceUri: `${veracodeConfig().applicationUri}/${appGuid}/sandboxes`,
             queryAttribute1: '',
             queryValue1: '',
         };
