@@ -597,23 +597,48 @@ function scaResult(scanResult){
     let output = initialScanInfo('SCA', scanResult, null, projectUrl);
     output+= '<details>\n'+
     '<summary>Scan Details</summary>\n\n'+
-    '| Vulnerability ID | Severity | Description | Library | Version |\n' +
-    '| ---------------- | -------- | ----------- | ------- | ------- |\n';
+    '<table>'+
+    '<thead>'+
+    '<tr>'+
+      '<th> Severity </th>'+
+      '<th> Vulnerability ID </th>'+
+    '</tr>'+
+    '</thead>'+
+    '<tbody>';
+    
+    
+  
     vulnerabilities.forEach((vulnerability) => {
         vulnerability.libraries.forEach((library)=>{
         const libId = library._links.ref.split('/')[4];
         const lib = libraries[libId];
         const severityText = scaSeverityType(vulnerability.cvss3Score);
         const severityDisplay = `${getColoredIndicator(severityText, projectUrl)}`;
-    output +=
-        `| ${vulnerability.cve !== null ? `CVE-${vulnerability.cve}` : `NO-CVE`} `+
-        `| ${severityDisplay} ` +
-        `| ${vulnerability.title} ` +
-        `| ${lib.name} ` +
-        `| ${lib.versions[0].version} |\n`;
+
+        output += `<tr>
+        <td> ${severityDisplay} </td>
+        <td> ${vulnerability.cve !== null ? `CVE-${vulnerability.cve}` : `NO-CVE`} </td>
+        </tr>
+        <tr>
+        <td colspan="2">
+        <p> ${vulnerability.title} </p>
+        <p> ${lib.name}: ${lib.versions[0].version} </p>
+        <details><summary>Findings Details</summary>
+        <p> ${vulnerability.overview} </p>
+        <p> Latest Release: ${lib.latestRelease} </p>
+        <p> Latest safe version: ${lib.recommendedVersion} </p>
+        <p> CVSS Score: ${vulnerability.cvss3Score} </p>
+        <p> CVSS Vector: ${vulnerability.cvss3Vector} </p>
+        <p> EPSS Score: ${vulnerability.exploitability.epssScore} </p>
+        <p> EPSS Percentile: ${vulnerability.exploitability.epssPercentile} </p>
+        <p> EPSS Model Version: ${vulnerability.exploitability.epssModelVersion} </p>
+        </details>
+        </td>
+        </tr>`;
+
         });
     });
-    output += '</details>\n'
+    output += '</tbody></table></details>\n';
     return output;
 }
 
@@ -636,10 +661,9 @@ async function pipelineResult(scanResult, branch, projectUrl, debug){
     '<table>'+
     '<thead>'+
     '<tr>'+
-      '<th> CWE ID </th>'+
       '<th> Severity </th>'+
-      '<th> Source File </th>'+
-      '<th> Issue Type / Details </th>'+
+      '<th> CWE ID </th>'+
+      '<th> Source File <br>Issue Type <br>Details</th>'+
     '</tr>'+
     '</thead>'+
     '<tbody>';
@@ -654,15 +678,9 @@ async function pipelineResult(scanResult, branch, projectUrl, debug){
         
         output +=
         `<tr>
-        <td> ${result.cwe_id} </td>
         <td> ${severityDisplay} </td>
-        <td> [${filePath}:${lineNumber}](${displayLink}) </td>
-        <td> ${result.issue_type} </td>
-        </tr>
-        <tr>
-        <td colspan="4">
-        <details><summary>Flaw Details</summary> ${result.display_text} </details>
-        </td>
+        <td> ${result.cwe_id} </td>
+        <td> [${filePath}:${lineNumber}](${displayLink}) <br> ${result.issue_type} <br><details><summary>Flaw Details</summary> ${result.display_text} </td>
         </tr>`;
     }
     output += '</tbody></table></details>\n';
