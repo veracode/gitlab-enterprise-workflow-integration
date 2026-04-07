@@ -116,7 +116,7 @@ Auto Package:
     - cd $(basename -s .git ${CLONE_URL})
     - cd ../../
     - |
-      if [ "$DEBUG" = "true" ]; then
+      if [ "$ENABLE_DEBUG" = "true" ]; then
         ${CLI_FOLDER}/veracode package --source clonePath/* --output "$ARTIFACTS_FOLDER" --trust --verbose
       else
         ${CLI_FOLDER}/veracode package --source clonePath/* --output "$ARTIFACTS_FOLDER" --trust

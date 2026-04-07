@@ -35,7 +35,7 @@ async function veracodeScan() {
     const breakBuildOnInvalidPolicy = process.env.BREAK_BUILD_ON_INVALID_POLICY || false;
 
     const repoUrl = process.env.PROJECT_URL;
-    const debug = process.env.DEBUG;
+    const debug = process.env.ENABLE_DEBUG;
 
     if (executePipeline) {
         console.log(`Executing pipeline scan on ${projectName} repo for ${sourceBranch} branch`);
