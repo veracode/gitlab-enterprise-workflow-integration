@@ -264,8 +264,8 @@ async function getVeracodePolicyByName(vid, vkey, policyName) {
 async function getPolicyByName(vid, vkey, policyName) {
     const resource = {
         resourceUri: veracodeConfig().policyUri,
-        queryAttribute: 'name',
-        queryValue: encodeURIComponent(policyName)
+        queryAttribute1: 'name',
+        queryValue1: encodeURIComponent(policyName)
     };
     const response = await getResourceByAttribute(vid, vkey, resource);
     return response;
@@ -305,7 +305,7 @@ async function getApplicationFindings(appGuid, vid, vkey) {
     if (!findingsResponse._embedded) {
         console.log('No Policy scan found, lets look for sandbox scan findings');
         const getSandboxGUID = {
-            resourceUri: `${veracodeConfig().findingsUri}/${appGuid}/sandboxes`,
+            resourceUri: `${veracodeConfig().applicationUri}/${appGuid}/sandboxes`,
             queryAttribute1: '',
             queryValue1: '',
         };
