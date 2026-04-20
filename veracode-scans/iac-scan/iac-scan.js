@@ -3,8 +3,9 @@ const path = require('path');
 const { exitOnFailure, updateErrorMessage, uploadArtifact } = require('../../utility/utils'); 
 const execa = require('execa');
 const displayScanResult = require('../../displayScanResult');
+const { updateCommitStatus } = require('../../utility/service');
 
-async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug) { 
+async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug, commitSha, pipelineName, ciPipelineUrl) { 
   const veracodeDir = path.dirname(require.main.filename);
   const veracodeCliPath = path.resolve(veracodeDir, 'veracode-cli');
   const veracodeExecutable = path.join(veracodeCliPath, 'veracode');
@@ -73,17 +74,36 @@ async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, use
     if (jsonOutput?.vulnerabilities?.matches?.length == 0 && !jsonOutput["policy-results"][0].failures) {
       console.log(tableOutput);
       console.log(`Veracode IAC scan executed successfully. No Vulnerabilities found !!`);
+      const description = pipelineName+' no findings';
+      const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'success', pipelineName, ciPipelineUrl, description, debug);
+      if (!pipelineStatusUpdateFailed) {
+          console.error("IAC/secret Scan status update failed");
+          exitOnFailure(breakBuildOnError);
+      }
     } else {
       await uploadArtifact(veracodeArtifactsDir,"IacScan","IacScan.json",JSON.stringify(resultsJSON, null, 2));
       console.log(`Vulnerability detected in the repository !!`);
       console.error(tableOutput);
       await displayScanResult(resultsJSON);
+      const description = pipelineName+' findings';
+      const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, description, debug);
+      if (!pipelineStatusUpdateFailed) {
+          console.error("IAC/secret Scan status update failed");
+          exitOnFailure(breakBuildOnError);
+      }
+      
       exitOnFailure(breakBuildOnError);
     }
   } catch (error) {
     console.log(breakBuildOnError)
     error = updateErrorMessage(breakBuildOnError, userErrorMessage, error.message);
     console.error(`Error occurred during IAC scan: ${error}`);
+    const description = pipelineName+' failed';
+    const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, description, debug);
+    if (!pipelineStatusUpdateFailed) {
+        console.error("IAC/secret Scan status update failed");
+        exitOnFailure(breakBuildOnError);
+    }
     exitOnFailure(breakBuildOnError);
   }
 }

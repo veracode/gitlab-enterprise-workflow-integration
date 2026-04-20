@@ -527,6 +527,7 @@ module.exports = {
     deleteResourceById,
     getApplicationFindings,
     veracodePolicyVerification,
+    getPolicyByName,
     getLatestVersion,
     downloadAndExtractCli,
     setScanResultError,

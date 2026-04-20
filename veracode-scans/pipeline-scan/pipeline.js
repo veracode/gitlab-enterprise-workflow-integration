@@ -4,33 +4,34 @@ const { SCAN, STATUS } = require('../../config/constants');
 const { appConfig } = require('../../config');
 const { exitOnFailure, updateErrorMessage, uploadArtifact } = require('../../utility/utils');
 const execa = require('execa');
-const { getApplicationByName, getApplicationFindings, isProfileExists, veracodePolicyVerification, validateCredential } = require('../../utility/common');
+const { getApplicationByName, getApplicationFindings, isProfileExists, veracodePolicyVerification, validateCredential, getPolicyByName } = require('../../utility/common');
+const { updateCommitStatus } = require('../../utility/service');
 const pipelineScanIssue = require('../../veracode-issues/pipelineScanIssue');
 const displayScanResult = require('../../displayScanResult');
 const { execSync } = require('child_process');
 
-async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug) {
+async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug, commitSha, pipelineName, ciPipelineUrl) {
     const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
 
     try {
         const isCredentialValid = await validateCredential(apiId, apiKey);
 
         if (!isCredentialValid) {
-            await displayScanResult([], "Veracode credentials are invalid or expired.");
+            await displayScanResult([], "Veracode credentials are invalid or expired.", debug);
             exitOnFailure(breakBuildOnError);
             return;
         }
 
         const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy);
         if (invalidPolicy) {
-            await displayScanResult([], "Invalid Veracode Policy name.");
+            await displayScanResult([], "Invalid Veracode Policy name.", debug);
             exitOnFailure(breakBuildOnInvalidPolicy);
         }
 
         const artifacts = await fs.promises.readdir(veracodeArtifactsDir);
         const scanResults = await Promise.all(
             artifacts.map((artifact) =>
-                executePipelineScan(veracodeArtifactsDir, artifact, apiId, apiKey, debug)
+                executePipelineScan(veracodeArtifactsDir, artifact, apiId, apiKey, debug, policyName)
             )
         );
 
@@ -46,9 +47,15 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
             const artifactName = failedScan.artifact.replace(/\.[^/.]+$/, '');
             const simplifiedFileName = (resultFileName) =>
                 resultFileName.includes('pipeline') ? 'pipeline.json' : 'filtered_results.json';
+            
 
-            // Loop through each result file in the failed scan
+            // Loop through each result file in the failed scan only if the result file is *filtered_results.json
             for (const resultFileName of failedScan.results) {
+                // Only process files that include "filtered_results.json"
+                if (!resultFileName.includes('filtered_results.json')) {
+                    console.log(`Skipping ${resultFileName} - not a filtered_results.json file`);
+                    continue;
+                }
                 try {
                     // Check if the result file exists
                     if (!fs.existsSync(resultFileName)) {
@@ -59,7 +66,6 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
                     // Read and parse the result file
                     let rawData = fs.readFileSync(resultFileName);
                     let resultsJSON = JSON.parse(rawData.toString());
-
                     // Awaiting async operations for upload and flaw mitigation
                     await uploadArtifact(veracodeArtifactsDir, artifactName, simplifiedFileName(resultFileName), JSON.stringify(resultsJSON, null, 2));
                     const isFilterMitigatedFlaws = filterMitigatedFlaws === 'true' ? true : filterMitigatedFlaws === 'false' ? false : filterMitigatedFlaws;
@@ -96,7 +102,7 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
         };
 
         if (filteredResult.findings.length > 0) {
-            await displayScanResult(filteredResult.findings);
+            await displayScanResult(filteredResult.findings, "", debug);
 
             if (createIssue) {
                 await pipelineScanIssue(filteredResult);
@@ -104,15 +110,29 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
 
             pipelineResult.result = JSON.stringify(filteredResult, null, 2);
             pipelineResult.status = STATUS.Findings;
-            pipelineResult.message = 'Vulnerability detected in the repository';
+            pipelineResult.message = 'Flaws detected in the repository';
+            const description = pipelineName+' findings';
+            const pipelineStatusUpdateFailed = await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, description, debug);
+            if (!pipelineStatusUpdateFailed) {
+                console.error("Pipeline status update failed");
+                exitOnFailure(breakBuildOnError);
+                return pipelineResult;
+            }
             exitOnFailure(breakBuildOnFinding);
 
             return pipelineResult;
         } else {
-            await displayScanResult([]);
+            await displayScanResult([], "", debug);
             console.log('No pipeline findings, exiting and updating the GitLab check status to success');
             pipelineResult.message = 'No pipeline findings.';
             pipelineResult.status = STATUS.Success;
+            const description = pipelineName+' - no findings';
+            const pipelineStatusUpdateStart = await updateCommitStatus(commitSha, 'success', pipelineName, ciPipelineUrl, description, debug);
+            if (!pipelineStatusUpdateStart) {
+                console.error("Pipeline status update failed");
+                exitOnFailure(breakBuildOnError);
+                return;
+            }
             return pipelineResult;
         }
     } catch (error) {
@@ -122,7 +142,101 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
     }
 }
 
-async function executePipelineScan(veracodeArtifactsDir, artifactName, apiId, apiKey, debug) {
+async function getPolicyParameter(apiId, apiKey, policyName, debug) {
+    if (!policyName || policyName === '') {
+        return '';
+    }
+
+    try {
+        // Determine region for logging
+        if (debug === "true") {
+            if (apiId.startsWith('vera01ei-')) {
+                console.log('Region: EU');
+            } else {
+                console.log('Region: US');
+            }
+        }
+
+        // Get policy details (getPolicyByName handles region detection internally)
+        const responseData = await getPolicyByName(apiId, apiKey, policyName);
+
+        if (debug === "true") {
+            console.log('---- DEBUG OUTPUT START ----');
+            console.log('---- getPolicyParameter() - find the policy via API ----');
+            console.log('---- Response Data ----');
+            console.log(JSON.stringify(responseData));
+            console.log('---- DEBUG OUTPUT END ----');
+        }
+
+        if (!responseData || responseData.page.total_elements === 0) {
+            if (debug === "true") {
+                console.log('NO POLICY FOUND - NO POLICY WILL BE USED TO RATE FINDINGS');
+            }
+            return '';
+        }
+
+        const policyVersion = responseData._embedded.policy_versions[0];
+        if (!policyVersion) {
+            if (debug === "true") {
+                console.log('NO POLICY FOUND - NO POLICY WILL BE USED TO RATE FINDINGS');
+            }
+            return '';
+        }
+
+        if (policyVersion.type === 'BUILTIN') {
+            if (debug === "true") {
+                console.log('Built-in Policy is required');
+                console.log(`Setting policy to ${policyName}`);
+            }
+            return ` --policy_name "${policyName}"`;
+        } else if (policyVersion.type === 'CUSTOMER') {
+            if (debug === "true") {
+                console.log('Custom Policy is required');
+                console.log(`Downloading custom policy file and setting policy to ${policyName}`);
+            }
+
+            // Download custom policy file
+            const pipelineScanJarPath = path.join(__dirname, 'pipeline-scan.jar');
+            const policyCommand = `java -jar ${pipelineScanJarPath} -vid ${apiId} -vkey ${apiKey} --request_policy "${policyName}"`;
+            
+            try {
+                execSync(policyCommand, { stdio: 'inherit', encoding: 'utf-8' });
+                
+                if (debug === "true") {
+                    console.log('---- DEBUG OUTPUT START ----');
+                    console.log('---- getPolicyParameter() - custom policy download ----');
+                    console.log(`---- Policy Download command: ${policyCommand}`);
+                    console.log('---- DEBUG OUTPUT END ----');
+                }
+
+                const policyFileName = policyName.replace(/ /gi, "_");
+                if (debug === "true") {
+                    console.log(`Policy File Name: ${policyFileName}`);
+                }
+                return ` --policy_file ${policyFileName}.json`;
+            } catch (error) {
+                console.error(`Error downloading custom policy: ${error.message}`);
+                return '';
+            }
+        } else {
+            if (debug === "true") {
+                console.log('Something went wrong with fetching the correct policy');
+            }
+            return '';
+        }
+    } catch (error) {
+        if (debug === "true") {
+            console.log('---- DEBUG OUTPUT START ----');
+            console.log('---- getPolicyParameter() - find policy via API catch error ----');
+            console.log('---- Error:', error.message);
+            console.log('---- DEBUG OUTPUT END ----');
+        }
+        console.error(`Error getting policy parameter: ${error.message}`);
+        return '';
+    }
+}
+
+async function executePipelineScan(veracodeArtifactsDir, artifactName, apiId, apiKey, debug, policyName) {
     const pipelineResultFileName = `${artifactName}-` + appConfig().pipelineScanFile;
     const filteredResultFileName = `${artifactName}-` + appConfig().filteredScanFile;
 
@@ -130,6 +244,13 @@ async function executePipelineScan(veracodeArtifactsDir, artifactName, apiId, ap
         const artifactFilePath = path.join(veracodeArtifactsDir, artifactName);
         const pipelineScanJarPath = path.join(__dirname, 'pipeline-scan.jar');
         let pipelineScanCommand = `java -jar ${pipelineScanJarPath} -vid ${apiId} -vkey ${apiKey} -f ${artifactFilePath} -jf ${pipelineResultFileName} -fjf ${filteredResultFileName}`;
+        
+        // Add policy parameter if policy name is provided
+        if (policyName && policyName !== '') {
+            const policyParameter = await getPolicyParameter(apiId, apiKey, policyName, debug);
+            pipelineScanCommand += policyParameter;
+        }
+        
         if(debug === "true")
              pipelineScanCommand += ' -V true';
         execSync(pipelineScanCommand, { stdio: 'inherit' });

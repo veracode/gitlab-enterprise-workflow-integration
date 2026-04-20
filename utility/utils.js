@@ -326,66 +326,387 @@ const severityRank = {
     "INFORMATIONAL":0
   };  
 
-function initialScanInfo(){
-    return '- :red_circle: **Critical**: Immediate attention required.\n' +
-    '- :orange_circle: **High**: Serious but slightly lower priority than Critical.\n' +
-    '- :yellow_circle: **Medium**: Moderate risk, to be fixed in a reasonable timeframe.\n' +
-    '- :green_circle: **Low**: Minimal risk, can be addressed in the normal course of development.\n' +
-    '- :blue_circle: **Very Low**: Recommendations or low-priority findings.\n' +
-    '- :white_circle: **Informational**: No security impact, can be ignored.\n'
+/**
+ * Normalizes severity strings from different scan types to a standard format
+ * @param {string} severity - Severity string from scan results
+ * @returns {string} Normalized severity string
+ */
+function normalizeSeverity(severity) {
+    if (!severity) return '';
+    
+    // Normalize to string and trim whitespace
+    const normalized = String(severity).trim();
+    
+    // Handle uppercase (IaC uses CRITICAL, HIGH, etc.)
+    const upperSeverity = normalized.toUpperCase();
+    
+    // Map to standard severity names
+    if (upperSeverity === 'CRITICAL' || normalized === 'Critical') {
+        return 'Critical';
+    } else if (upperSeverity === 'HIGH' || normalized === 'High' || normalized === ' High') {
+        return 'High';
+    } else if (upperSeverity === 'MEDIUM' || normalized === 'Medium') {
+        return 'Medium';
+    } else if (upperSeverity === 'LOW' || normalized === 'Low' || normalized === 'Low Risk') {
+        return 'Low';
+    } else if (upperSeverity === 'VERY_LOW' || normalized === 'Very Low') {
+        return 'Very Low';
+    } else if (upperSeverity === 'INFORMATIONAL' || normalized === 'Informational') {
+        return 'Informational';
+    }
+    
+    // Return original if no match
+    return normalized;
+}
+
+/**
+ * Gets the severity image URL from the project repository
+ * Images are stored in the imgs folder in the same repository, always on 'main' branch
+ * @param {string} severity - Severity string (will be normalized)
+ * @param {string} projectUrl - Optional project URL (falls back to CI_PROJECT_URL)
+ * @returns {string} Image URL or empty string if construction fails
+ */
+function getSeverityImageUrl(severity, projectUrl = null) {
+    // Normalize severity first
+    const normalizedSeverity = normalizeSeverity(severity);
+    
+    // Get project URL from environment variable (CI_PROJECT_URL) or fall back to passed parameter
+    const currentProjectUrl = process.env.CI_PROJECT_URL || projectUrl;
+    if (!currentProjectUrl) return '';
+    
+    // Map severity to image filename
+    const imageMap = {
+        'Critical': 'Very_High.png',
+        'High': 'High.png',
+        'Medium': 'Medium.png',
+        'Low': 'Low.png',
+        'Very Low': 'Very_Low.png',
+        'Informational': 'Informational.png'
+    };
+    
+    const imageFile = imageMap[normalizedSeverity];
+    if (!imageFile) return '';
+    
+    // Construct GitLab raw file URL by appending the path to CI_PROJECT_URL
+    // Format: {CI_PROJECT_URL}/-/raw/main/imgs/{filename}
+    try {
+        // Remove trailing slash from project URL if present
+        const baseUrl = currentProjectUrl.replace(/\/$/, '');
+        return `${baseUrl}/-/raw/main/imgs/${encodeURIComponent(imageFile)}`;
+    } catch (error) {
+        console.log('Error constructing image URL:', error.message);
+        return '';
+    }
+}
+
+/**
+ * Creates a colored indicator using images for severity display
+ * @param {string} severity - Severity string (will be normalized)
+ * @param {string} projectUrl - Optional project URL (falls back to CI_PROJECT_URL)
+ * @returns {string} Markdown image indicator or empty string if image URL can't be constructed
+ */
+function getColoredIndicator(severity, projectUrl = null) {
+    const imageUrl = getSeverityImageUrl(severity, projectUrl);
+    if (imageUrl) {
+        const normalizedSeverity = normalizeSeverity(severity);
+        return `![${normalizedSeverity}](${imageUrl})`;
+    }
+    // Fallback to empty string if image URL can't be constructed
+    return '';
+}
+
+function initialScanInfo(scanType = 'Pipeline', scanResults = null, severityColors = null, projectUrl = null, branch = null){
+    let scanMessage = '';
+    
+    switch(scanType) {
+        case 'Pipeline':
+            scanMessage = '![Veracode](https://analysiscenter.veracode.com/images/interface/veracodePlatformLogoSmall.png)<br> **Veracode Static Scan found flaws**';
+            break;
+        case 'Sandbox':
+            scanMessage = '![Veracode](https://analysiscenter.veracode.com/images/interface/veracodePlatformLogoSmall.png)<br> **Veracode Static Scan found flaws**';
+            break;
+        case 'Policy':
+            scanMessage = '![Veracode](https://analysiscenter.veracode.com/images/interface/veracodePlatformLogoSmall.png)<br> **Veracode Static Scan found flaws**';
+            break;
+        case 'SCA':
+            scanMessage = '![Veracode](https://analysiscenter.veracode.com/images/interface/veracodePlatformLogoSmall.png)<br> **Veracode SCA Scan found vulnerabilities**';
+            break;
+        case 'IaC':
+            scanMessage = '![Veracode](https://analysiscenter.veracode.com/images/interface/veracodePlatformLogoSmall.png)<br> **Veracode IaC/Secrets Scan found vulnerabilities/misconfigurations/secrets**';
+            break;
+        default:
+            scanMessage = '![Veracode](https://analysiscenter.veracode.com/images/interface/veracodePlatformLogoSmall.png)<br> **Veracode Scan found issues**';
+    }
+    
+    let output = scanMessage + '\n\n';
+    
+    // Add severity breakdown table for Pipeline scans
+    if (scanType === 'Pipeline' && scanResults && Array.isArray(scanResults) && scanResults.length > 0) {
+        // Count findings by severity
+        const severityCounts = {
+            'Critical': 0,
+            'High': 0,
+            'Medium': 0,
+            'Low': 0,
+            'Very Low': 0,
+            'Informational': 0
+        };
+        
+        scanResults.forEach(result => {
+            const severityText = severityType(result.severity);
+            if (severityCounts.hasOwnProperty(severityText)) {
+                severityCounts[severityText]++;
+            }
+        });
+        
+        // Create severity breakdown table
+        output += '### Findings by Severity\n\n';
+        output += '| Severity | Count |\n';
+        output += '|----------|-------|\n';
+        output += `| ${getColoredIndicator('Critical', projectUrl)} | ${severityCounts['Critical']} |\n`;
+        output += `| ${getColoredIndicator('High', projectUrl)} | ${severityCounts['High']} |\n`;
+        output += `| ${getColoredIndicator('Medium', projectUrl)} | ${severityCounts['Medium']} |\n`;
+        output += `| ${getColoredIndicator('Low', projectUrl)} | ${severityCounts['Low']} |\n`;
+        output += `| ${getColoredIndicator('Very Low', projectUrl)} | ${severityCounts['Very Low']} |\n`;
+        output += `| ${getColoredIndicator('Informational', projectUrl)} | ${severityCounts['Informational']} |\n`;
+        output += `| **Total** | **${scanResults.length}** |\n\n`;
+    }
+    
+    // Add severity breakdown table for SCA scans
+    if (scanType === 'SCA' && scanResults && scanResults.vulnerabilities && Array.isArray(scanResults.vulnerabilities)) {
+        // Count findings by severity (each vulnerability-library combination counts as one)
+        const severityCounts = {
+            'Critical': 0,
+            'High': 0,
+            'Medium': 0,
+            'Low': 0,
+            'Very Low': 0,
+            'Informational': 0
+        };
+        
+        let totalCount = 0;
+        scanResults.vulnerabilities.forEach(vulnerability => {
+            const severityText = scaSeverityType(vulnerability.cvss3Score);
+            // Count each library affected by this vulnerability
+            const libraryCount = vulnerability.libraries ? vulnerability.libraries.length : 1;
+            totalCount += libraryCount;
+            
+            // Normalize severity text (handle "Low Risk" and " High" with space)
+            const normalizedSeverity = normalizeSeverity(severityText);
+            if (severityCounts.hasOwnProperty(normalizedSeverity)) {
+                severityCounts[normalizedSeverity] += libraryCount;
+            }
+        });
+        
+        // Create severity breakdown table
+        output += '### Findings by Severity\n\n';
+        output += '| Severity | Count |\n';
+        output += '|----------|-------|\n';
+        output += `| ${getColoredIndicator('Critical', projectUrl)} | ${severityCounts['Critical']} |\n`;
+        output += `| ${getColoredIndicator('High', projectUrl)} | ${severityCounts['High']} |\n`;
+        output += `| ${getColoredIndicator('Medium', projectUrl)} | ${severityCounts['Medium']} |\n`;
+        output += `| ${getColoredIndicator('Low', projectUrl)} | ${severityCounts['Low']} |\n`;
+        output += `| ${getColoredIndicator('Very Low', projectUrl)} | ${severityCounts['Very Low']} |\n`;
+        output += `| ${getColoredIndicator('Informational', projectUrl)} | ${severityCounts['Informational']} |\n`;
+        output += `| **Total** | **${totalCount}** |\n\n`;
+    }
+    
+    // Add severity breakdown table for IaC scans
+    if (scanType === 'IaC' && scanResults) {
+        // Initialize counts for all severities across all three types
+        const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'Very Low', 'Informational'];
+        const counts = {
+            'Critical': { vulnerabilities: 0, misconfigurations: 0, secrets: 0 },
+            'High': { vulnerabilities: 0, misconfigurations: 0, secrets: 0 },
+            'Medium': { vulnerabilities: 0, misconfigurations: 0, secrets: 0 },
+            'Low': { vulnerabilities: 0, misconfigurations: 0, secrets: 0 },
+            'Very Low': { vulnerabilities: 0, misconfigurations: 0, secrets: 0 },
+            'Informational': { vulnerabilities: 0, misconfigurations: 0, secrets: 0 }
+        };
+        
+        // Count vulnerabilities by severity
+        const vulnerabilityData = scanResults?.vulnerabilities?.matches || [];
+        vulnerabilityData.forEach(result => {
+            const severity = normalizeSeverity(result.vulnerability.severity);
+            if (counts.hasOwnProperty(severity)) {
+                counts[severity].vulnerabilities++;
+            }
+        });
+        
+        // Count misconfigurations by severity
+        const misconfigurations = scanResults?.configs || [];
+        misconfigurations.forEach(result => {
+            const severity = normalizeSeverity(result.Severity);
+            if (counts.hasOwnProperty(severity)) {
+                counts[severity].misconfigurations++;
+            }
+        });
+        
+        // Count secrets by severity
+        const secrets = scanResults?.secrets || [];
+        secrets.forEach(result => {
+            const severity = normalizeSeverity(result.Severity);
+            if (counts.hasOwnProperty(severity)) {
+                counts[severity].secrets++;
+            }
+        });
+        
+        // Create severity breakdown table
+        output += '### Findings by Severity\n\n';
+        output += '| Severity | Vulnerability | Misconfiguration | Secrets |\n';
+        output += '|----------|---------------|------------------|--------|\n';
+        severityOrder.forEach(severity => {
+            output += `| ${getColoredIndicator(severity, projectUrl)} | ${counts[severity].vulnerabilities} | ${counts[severity].misconfigurations} | ${counts[severity].secrets} |\n`;
+        });
+        output += '\n';
+    }
+    
+    return output;
 }
 
 function scaResult(scanResult){
-    const vulnerabilities = scanResult.vulnerabilities.sort((a,b)=>  b.cvss3Score - a.cvss3Score);
     const libraries = scanResult.libraries;
-    let output = initialScanInfo();
+    const projectUrl = process.env.CI_PROJECT_URL || process.env.PROJECT_URL;
+    
+    // Sort vulnerabilities by severity (Very High/Critical first)
+    // Map normalized severity to severityRank keys
+    const getSeverityRank = (severity) => {
+        const normalized = normalizeSeverity(severity);
+        // Map normalized severity to severityRank keys
+        if (normalized === 'Critical') return severityRank.CRITICAL;
+        if (normalized === 'High') return severityRank.HIGH;
+        if (normalized === 'Medium') return severityRank.MEDIUM;
+        if (normalized === 'Low') return severityRank.LOW;
+        if (normalized === 'Very Low') return severityRank.VERY_LOW;
+        if (normalized === 'Informational') return severityRank.INFORMATIONAL;
+        return 0;
+    };
+    
+    const vulnerabilities = scanResult.vulnerabilities.sort((a, b) => {
+        const severityA = scaSeverityType(a.cvss3Score);
+        const severityB = scaSeverityType(b.cvss3Score);
+        const rankA = getSeverityRank(severityA);
+        const rankB = getSeverityRank(severityB);
+        // If same rank, sort by CVSS score as tiebreaker
+        if (rankB === rankA) {
+            return b.cvss3Score - a.cvss3Score;
+        }
+        return rankB - rankA; // Descending order (highest severity first)
+    });
+    
+    let output = initialScanInfo('SCA', scanResult, null, projectUrl);
     output+= '<details>\n'+
     '<summary>Scan Details</summary>\n\n'+
-    '| Vulnerability ID | Severity | Description | Library | Version |\n' +
-    '| ---------------- | -------- | ----------- | ------- | ------- |\n';
+    '<table>'+
+    '<thead>'+
+    '<tr>'+
+      '<th> Severity </th>'+
+      '<th> Vulnerability ID </th>'+
+    '</tr>'+
+    '</thead>'+
+    '<tbody>';
+    
+    
+  
     vulnerabilities.forEach((vulnerability) => {
         vulnerability.libraries.forEach((library)=>{
         const libId = library._links.ref.split('/')[4];
         const lib = libraries[libId];
-    output +=
-        `| ${vulnerability.cve !== null ? `CVE-${vulnerability.cve}` : `NO-CVE`} `+
-        `| ${scaSeverityType(vulnerability.cvss3Score)} ` +
-        `| ${vulnerability.title} ` +
-        `| ${lib.name} ` +
-        `| ${lib.versions[0].version} |\n`;
+        const severityText = scaSeverityType(vulnerability.cvss3Score);
+        const severityDisplay = `${getColoredIndicator(severityText, projectUrl)}`;
+
+        output += `<tr>
+        <td> ${severityDisplay} </td>
+        <td> ${vulnerability.cve !== null ? `CVE-${vulnerability.cve}` : `NO-CVE`} </td>
+        </tr>
+        <tr>
+        <td colspan="2">
+        <p> ${vulnerability.title} </p>
+        <p> ${lib.name}: ${lib.versions[0].version} </p>
+        <details><summary>Findings Details</summary>
+        <p> ${vulnerability.overview} </p>
+        <p> Latest Release: ${lib.latestRelease} </p>
+        <p> Latest safe version: ${lib.recommendedVersion} </p>
+        <p> CVSS Score: ${vulnerability.cvss3Score} </p>
+        <p> CVSS Vector: ${vulnerability.cvss3Vector} </p>
+        <p> EPSS Score: ${vulnerability.exploitability.epssScore} </p>
+        <p> EPSS Percentile: ${vulnerability.exploitability.epssPercentile} </p>
+        <p> EPSS Model Version: ${vulnerability.exploitability.epssModelVersion} </p>
+        </details>
+        </td>
+        </tr>`;
+
         });
     });
-    output += '</details>\n'
+    output += '</tbody></table></details>\n';
     return output;
 }
 
-function pipelineResult(scanResult){
-    let output = initialScanInfo();
+const { getSourceFilePath: getSourceFilePathService } = require('./service');
+
+async function getSourceFilePath(filePath, branch, projectUrl, lineNumber, debug) {
+    return await getSourceFilePathService(filePath, branch, projectUrl, lineNumber, debug);
+}
+async function pipelineResult(scanResult, branch, projectUrl, debug){
+    let output = initialScanInfo('Pipeline', scanResult, null, projectUrl, branch);
+    
+    // Sort results by severity (Very High/Critical first)
+    const sortedResults = [...scanResult].sort((a, b) => {
+        // Severity is numeric: 0=Informational, 1=Very Low, 2=Low, 3=Medium, 4=High, 5=Critical
+        return b.severity - a.severity; // Descending order (highest severity first)
+    });
+    
     output+= '<details>\n'+
     '<summary>Scan Details</summary>\n\n'+
-    '| CWE ID | Severity | Issue Type | Source File |\n' +
-    '| ------ | -------- | ---------- | ----------- |\n';
-    scanResult.forEach((result) => {
-    output +=
-        `| ${result.cwe_id} `+
-        `| ${severityType(result.severity)} ` +
-        `| ${result.issue_type} ` +
-        `| Line ${result.files.source_file.line}: ${result.files.source_file.file} |\n`;
-    });
-    output += '</details>\n'
+    '<table>'+
+    '<thead>'+
+    '<tr>'+
+      '<th> Severity </th>'+
+      '<th> CWE ID </th>'+
+      '<th> Source File <br>Issue Type <br>Details</th>'+
+    '</tr>'+
+    '</thead>'+
+    '<tbody>';
+
+    for (const result of sortedResults) {
+        const filePath = result.files.source_file.file;
+        const lineNumber = result.files.source_file.line;
+        const sourceFileLink = await getSourceFilePath(filePath, branch, projectUrl, lineNumber, debug);
+        const displayLink = sourceFileLink || `${filePath}:${lineNumber}`;
+        const severityText = severityType(result.severity);
+        const severityDisplay = `${getColoredIndicator(severityText, projectUrl)}`;
+        
+        output +=
+        `<tr>
+        <td> ${severityDisplay} </td>
+        <td> ${result.cwe_id} </td>
+        <td> [${filePath}:${lineNumber}](${displayLink}) <br> ${result.issue_type} <br><details><summary>Flaw Details</summary> ${result.display_text} </td>
+        </tr>`;
+    }
+    output += '</tbody></table></details>\n';
     return output;
 }
 
 function policyResult(scanResult){
-    let output = initialScanInfo();
+    const projectUrl = process.env.CI_PROJECT_URL || process.env.PROJECT_URL;
+    
+    // Sort results by severity (Very High/Critical first)
+    const sortedResults = [...scanResult].sort((a, b) => {
+        // Severity is numeric: 0=Informational, 1=Very Low, 2=Low, 3=Medium, 4=High, 5=Critical
+        return b.static.severity - a.static.severity; // Descending order (highest severity first)
+    });
+    
+    let output = initialScanInfo('Policy', null, null, projectUrl);
     output+= '<details>\n'+
     '<summary>Scan Details</summary>\n\n'+
     '| CWE ID | Severity | Issue Type | Category | Source File |\n' +
     '| ------ | -------- | ---------- | -------- | ----------- |\n';
-    scanResult.forEach((result) => {
+    sortedResults.forEach((result) => {
+        const severityText = severityType(result.static.severity);
+        const severityDisplay = `${getColoredIndicator(severityText, projectUrl)} ${severityText}`;
     output +=
         `| ${result.static.cwe_id} `+
-        `| ${severityType(result.static.severity)} ` +
+        `| ${severityDisplay} ` +
         `| ${result.static.issue_type} ` +
         `| ${result.static.category} ` +
         `| Line ${result.static.line}: ${result.static.source_file} |\n`;
@@ -396,12 +717,12 @@ function policyResult(scanResult){
 
  
 function iacResult(scanResult){
+    const projectUrl = process.env.CI_PROJECT_URL || process.env.PROJECT_URL;
+    let output = initialScanInfo('IaC', scanResult, null, projectUrl);
     
-    let output = initialScanInfo();
-    
-    let IaCVulnerabilities = extractIaCVulnerabilities(scanResult);
-    let IaCMisconfigurations = extractIaCMisconfigurations(scanResult);
-    let IaCSecrets = extractIaCSecrets(scanResult);
+    let IaCVulnerabilities = extractIaCVulnerabilities(scanResult, projectUrl);
+    let IaCMisconfigurations = extractIaCMisconfigurations(scanResult, projectUrl);
+    let IaCSecrets = extractIaCSecrets(scanResult, projectUrl);
     
     output += IaCVulnerabilities;
     output += IaCMisconfigurations;
@@ -410,7 +731,7 @@ function iacResult(scanResult){
     return output;
 }
 
-function extractIaCVulnerabilities(scanResult){
+function extractIaCVulnerabilities(scanResult, projectUrl = null){
         let output = "";
         const vulnerabilityData = scanResult?.vulnerabilities?.matches || [];
         
@@ -439,14 +760,15 @@ function extractIaCVulnerabilities(scanResult){
         '| Severity  | Name     | Vulnerability | Installed  | Fixed-In      | Type        | Message        |\n' +
         '| --------  | -------- | ------------- | ---------  | --------------| ----------- | -------------- |\n';
         formattedVulnerabilities.forEach((result) => {
-        output += `| ${result.SEVERITY} | ${result.NAME} | ${result.VULNERABILITY} | ${result.INSTALLED} | ${result["FIXED_IN"]} | ${result.TYPE} | ${result.MESSAGE} |\n`;
+            const severityDisplay = `${getColoredIndicator(result.SEVERITY, projectUrl)}`;
+        output += `| ${severityDisplay} | ${result.NAME} | ${result.VULNERABILITY} | ${result.INSTALLED} | ${result["FIXED_IN"]} | ${result.TYPE} | ${result.MESSAGE} |\n`;
         });
         output += '\n</details>\n';
     
         return output;        
 }
 
-function extractIaCMisconfigurations(scanResults) {
+function extractIaCMisconfigurations(scanResults, projectUrl = null) {
         let output = "";  
         const Misconfigurations = scanResults?.configs;
       
@@ -472,8 +794,9 @@ function extractIaCMisconfigurations(scanResults) {
             '| SEVERITY | TITLE    |  ID   | PROVIDER | MESSAGE        |\n' +
             '| ------- | -------- | ----- | --------- | -------------- |\n';
         formattedData.forEach((result) => {
+            const severityDisplay = `${getColoredIndicator(result.SEVERITY, projectUrl)}`;
             output +=
-                `| ${result.SEVERITY} ` +
+                `| ${severityDisplay} ` +
                 `| ${result.TITLE} ` +
                 `| ${result.ID} ` +
                 `| Line ${result.PROVIDER} `+ 
@@ -484,7 +807,7 @@ function extractIaCMisconfigurations(scanResults) {
         return output;
 }
 
-function extractIaCSecrets(scanResult){
+function extractIaCSecrets(scanResult, projectUrl = null){
         let output = "";
         const IacSecreteData = scanResult?.secrets || [];
         
@@ -509,7 +832,8 @@ function extractIaCSecrets(scanResult){
         '| Severity | SECRET_TYPE | FILE          | MESSAGE           |\n' +
         '| -------- | ----------- | ------------- | ----------------- |\n';
         formattedIacSecret.forEach((result) => {
-        output += `| ${result.SEVERITY} | ${result.SECRET_TYPE} | ${result.FILE} | ${result.MESSAGE} |\n`;
+            const severityDisplay = `${getColoredIndicator(result.SEVERITY, projectUrl)}`;
+        output += `| ${severityDisplay} | ${result.SECRET_TYPE} | ${result.FILE} | ${result.MESSAGE} |\n`;
         });
         output += '\n</details>\n';
 

@@ -29,6 +29,7 @@ Cli Version Check:
   script: 
     - npm i
     - node ./cancelOldPipeline.js
+    - node ./utility/updateCommitStatus.js
     - |   
       # Define installation directory and version file path
       export CLI_FOLDER="$(pwd)/veracode-cli"

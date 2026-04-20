@@ -37,9 +37,13 @@ async function veracodeScan() {
     const repoUrl = process.env.PROJECT_URL;
     const debug = process.env.ENABLE_DEBUG;
 
+    const commitSha = process.env.COMMIT_SHA;
+    const pipelineName = process.env.PIPELINE_NAME;
+    const ciPipelineUrl = process.env.CI_PIPELINE_URL;
+
     if (executePipeline) {
         console.log(`Executing pipeline scan on ${projectName} repo for ${sourceBranch} branch`);
-        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug);
+        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug, commitSha, pipelineName, ciPipelineUrl);
     }
     if (executeSandbox) {
         console.log(`Executing sandbox scan on ${projectName} repo for ${sourceBranch} branch`);
@@ -55,11 +59,11 @@ async function veracodeScan() {
     }
     if (executeSca) {
         console.log(`Executing sca scan on ${projectName} repo for ${sourceBranch} branch`);
-        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug);
+        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug, commitSha, pipelineName, ciPipelineUrl);
     }
     if (executeIac) {
         console.log(`Executing iac scan on ${projectName} repo for ${sourceBranch} branch`);
-        await iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug)
+        await iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug, commitSha, pipelineName, ciPipelineUrl)
     }
 }
 veracodeScan();
