@@ -36,22 +36,23 @@ async function veracodeScan() {
 
     const repoUrl = process.env.PROJECT_URL;
     const debug = process.env.ENABLE_DEBUG;
+    const brokerMetaData = process.env.BROKER_METADATA;
 
     if (executePipeline) {
         console.log(`Executing pipeline scan on ${projectName} repo for ${sourceBranch} branch`);
-        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug);
+        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug, brokerMetaData);
     }
     if (executeSandbox) {
         console.log(`Executing sandbox scan on ${projectName} repo for ${sourceBranch} branch`);
-        sandboxScan(apiId, appKey, sourceBranch, policyName, '', createProfile, ciPipelineId, appProfileName, breakBuildOnInvalidPolicy, repoUrl, debug)
+        sandboxScan(apiId, appKey, sourceBranch, policyName, '', createProfile, ciPipelineId, appProfileName, breakBuildOnInvalidPolicy, repoUrl, debug, brokerMetaData)
     }
     if (executePolicy) {
         console.log(`Executing policy scan on ${projectName} repo for ${sourceBranch} branch`);
-        await policyScan(apiId, appKey, appProfileName, ciPipelineId, policyName, '', createProfile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug);
+        await policyScan(apiId, appKey, appProfileName, ciPipelineId, policyName, '', createProfile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug, brokerMetaData);
     }
     if (executeRemoveSandbox) {
         console.log(`Executing removed sandbox scan on ${projectName} repo for ${sourceBranch} branch`);
-        removeSandboxScan(apiId, appKey, sourceBranch, appProfileName)
+        removeSandboxScan(apiId, appKey, sourceBranch, appProfileName, brokerMetaData)
     }
     if (executeSca) {
         console.log(`Executing sca scan on ${projectName} repo for ${sourceBranch} branch`);

@@ -9,9 +9,9 @@ const authorizationScheme = "VERACODE-HMAC-SHA-256";
 const requestVersion = "vcode_request_version_1";
 const nonceSize = 16;
 
-async function getVeracodeApplication(vid, vkey, applicationName, policyName, teams, createprofile, repoUrl) {
-    const responseData = await getApplicationByName(vid, vkey, applicationName);
-    const veracodePolicy = await getVeracodePolicyByName(vid, vkey, policyName);
+async function getVeracodeApplication(vid, vkey, applicationName, policyName, teams, createprofile, repoUrl, brokerMetaData) {
+    const responseData = await getApplicationByName(vid, vkey, applicationName, brokerMetaData);
+    const veracodePolicy = await getVeracodePolicyByName(vid, vkey, policyName, brokerMetaData);
     const policyId = veracodePolicy.policyGuid;
     const profile = isProfileExists(responseData, applicationName);
     if (profile.exists) {
@@ -20,7 +20,7 @@ async function getVeracodeApplication(vid, vkey, applicationName, policyName, te
         // Check for the Existing & Policy specified in the config file.
         if (existingVeracodePolicy !== policyId){
             const resource = generateResource(veracodeConfig().applicationUri, applicationName, policyId);
-            await updateResource(vid, vkey, resource, applicationGuid);
+            await updateResource(vid, vkey, resource, applicationGuid, brokerMetaData);
             return resourceResponse(
                 responseData?._embedded?.applications[0]?.id, 
                 responseData?._embedded?.applications[0]?.guid, 
@@ -46,7 +46,7 @@ async function getVeracodeApplication(vid, vkey, applicationName, policyName, te
                     }
                 }
             };
-            const response = await createResource(vid, vkey, resource);
+            const response = await createResource(vid, vkey, resource , brokerMetaData);
             const appProfile = response.app_profile_url;
             return {
                 'appId': response.id,
@@ -58,29 +58,29 @@ async function getVeracodeApplication(vid, vkey, applicationName, policyName, te
     }
 }
 
-async function getApplicationByName(vid, vkey, applicationName) {
+async function getApplicationByName(vid, vkey, applicationName, brokerMetaData) {
     const resource = {
         resourceUri: veracodeConfig().applicationUri,
         queryAttribute1: 'name',
         queryValue1: encodeURIComponent(applicationName)
     };
-    const response = await getResourceByAttribute(vid, vkey, resource);
+    const response = await getResourceByAttribute(vid, vkey, resource, brokerMetaData);
     console.log(`${appConfig().logPrefix} Response from create profile on veracode platform for applicationName ${applicationName} : ${JSON.stringify(response)}`);
     return response;
 }
 
-async function getSandboxesByApplicationGuid(appGuid, appId, appKey) {
+async function getSandboxesByApplicationGuid(appGuid, appId, appKey, brokerMetaData) {
     const resource = {
         resourceUri: veracodeConfig().sandboxUri.replace('${appGuid}', appGuid),
         queryAttribute1: '',
         queryValue1: ''
     };
-    const response = await getResourceByAttribute(appId, appKey, resource);
+    const response = await getResourceByAttribute(appId, appKey, resource, brokerMetaData);
     console.log(`${appConfig().logPrefix} Response from retriving sandboxes by application guuid ${appGuid} : ${JSON.stringify(response)}`);
     return response;
 }
 
-async function deleteResourceById(vid, vkey, resource) {
+async function deleteResourceById(vid, vkey, resource, brokerMetaData) {
     const resourceUri = resource.resourceUri;
     const resourceId = resource.queryValue1;
 
@@ -91,16 +91,34 @@ async function deleteResourceById(vid, vkey, resource) {
         vid = vid.split('-')[1] || '';
         vkey = vkey.split('-')[1] || '';
     }
-    const headers = {
-        Authorization: calculateAuthorizationHeaderV2({
-            id: vid,
-            key: vkey,
-            host: host,
-            url: queryUrl,
-            method: 'DELETE',
-        }),
-    };
-    const appUrl = `https://${host}${resourceUri}/${resourceId}`;
+    let appUrl;
+    let headers;
+
+    if(brokerMetaData?.originalUrl){
+        headers = {
+            Authorization: calculateAuthorizationHeaderV2({
+                id: vid,
+                key: vkey,
+                host: host,
+                url: queryUrl,
+                method: 'DELETE',
+            }),
+            'X-Target-Hostname' :host
+        }
+        appUrl = `${brokerMetaData.originalUrl}/proxy${resourceUri}/${resourceId}`
+
+    }else{
+        headers = {
+            Authorization: calculateAuthorizationHeaderV2({
+                id: vid,
+                key: vkey,
+                host: host,
+                url: queryUrl,
+                method: 'DELETE',
+            }),
+        };
+        appUrl = `https://${host}${resourceUri}/${resourceId}`;
+    }
     try {
         return await axios.delete(appUrl, { headers });
     } catch (error) {
@@ -120,7 +138,7 @@ function calculateAuthorizationHeaderV2(params) {
     return header;
 }
 
-function getResourceDetails(vid, vkey, resource) {
+function getResourceDetails(vid, vkey, resource, brokerMetaData) {
     const resourceUri = resource.resourceUri;
     const queryAttribute = resource.queryAttribute1;
     const queryValue = resource.queryValue1;
@@ -136,20 +154,32 @@ function getResourceDetails(vid, vkey, resource) {
         vid = vid.split('-')[1] || '';
         vkey = vkey.split('-')[1] || '';
     }
-    const headers = {
+    
+    let appUrl;
+    let headers;
+    if(brokerMetaData?.originalUrl){
+        appUrl= `${brokerMetaData.originalUrl}/proxy${resourceUri}${urlQueryParams}`;
+        headers = {
+        'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, urlQueryParams, 'GET'),
+        'X-Target-Hostname': host
+        };
+    }else{
+        appUrl = `https://${host}${resourceUri}${urlQueryParams}`;
+        headers = {
         'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, urlQueryParams, 'GET')
-    };
-    const appUrl = `https://${host}${resourceUri}${urlQueryParams}`;
+        };
+
+    }
     return {headers, appUrl};
 }
 
-async function validateCredential(vid, vkey) {
+async function validateCredential(vid, vkey, brokerMetaData) {
     const resource = {
         resourceUri: veracodeConfig().selfUserUri,
         queryAttribute1: '',
         queryValue1: '',
       };
-    const {headers, appUrl} = getResourceDetails(vid, vkey, resource);
+    const {headers, appUrl} = getResourceDetails(vid, vkey, resource, brokerMetaData);
     try {
         const response = await axios.get(appUrl, { headers });
         if (response.data.api_credentials) {
@@ -165,8 +195,8 @@ async function validateCredential(vid, vkey) {
     }
 }
 
-async function getResourceByAttribute(vid, vkey, resource) {
-    const {headers, appUrl} = getResourceDetails(vid, vkey, resource);
+async function getResourceByAttribute(vid, vkey, resource, brokerMetaData) {
+    const {headers, appUrl} = getResourceDetails(vid, vkey, resource, brokerMetaData);
     try {
         const response = await axios.get(appUrl, { headers });
         return response.data;
@@ -245,9 +275,9 @@ function isProfileExists(responseData, applicationName) {
     }
 }
 
-async function getVeracodePolicyByName(vid, vkey, policyName) {
+async function getVeracodePolicyByName(vid, vkey, policyName, brokerMetaData) {
     if (policyName !== '') {
-        const responseData = await getPolicyByName(vid, vkey, policyName);
+        const responseData = await getPolicyByName(vid, vkey, policyName, brokerMetaData);
         if (responseData.page.total_elements !== 0) {
             for (let i = 0; i < responseData._embedded.policy_versions.length; i++) {
                 if (responseData?._embedded?.policy_versions[i]?.name?.toLowerCase() === policyName.toLowerCase()) {
@@ -261,17 +291,17 @@ async function getVeracodePolicyByName(vid, vkey, policyName) {
     return { 'policyGuid': veracodeConfig().defaultPolicyUuid };
 }
 
-async function getPolicyByName(vid, vkey, policyName) {
+async function getPolicyByName(vid, vkey, policyName, brokerMetaData) {
     const resource = {
         resourceUri: veracodeConfig().policyUri,
         queryAttribute1: 'name',
         queryValue1: encodeURIComponent(policyName)
     };
-    const response = await getResourceByAttribute(vid, vkey, resource);
+    const response = await getResourceByAttribute(vid, vkey, resource, brokerMetaData);
     return response;
 }
 
-async function createResource(vid, vkey, resource) {
+async function createResource(vid, vkey, resource, brokerMetaData) {
     const resourceUri = resource.resourceUri;
     const resourceData = resource.resourceData;
     let host = veracodeConfig().hostName.US;
@@ -280,10 +310,21 @@ async function createResource(vid, vkey, resource) {
         vid = vid.split('-')[1] || '';
         vkey = vkey.split('-')[1] || '';
     }
-    const headers = {
-        'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, '', 'POST')
-    };
-    const appUrl = `https://${host}${resourceUri}`;
+    let appUrl;
+    let headers;
+
+    if(brokerMetaData?.originalUrl){
+        headers = {
+            'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, '', 'POST'),
+            'X-Target-Hostname' :host
+        };
+        appUrl = `${brokerMetaData.originalUrl}/proxy${resourceUri}`
+    }else{
+        headers = {
+            'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, '', 'POST')
+        };
+        appUrl = `https://${host}${resourceUri}`;
+    }
     try {
         const response = await axios.post(appUrl, resourceData, { headers });
         // console.debug(`veracode: Response from ${appUrl} : ${response.data}`);
@@ -293,14 +334,14 @@ async function createResource(vid, vkey, resource) {
     }
 }
 
-async function getApplicationFindings(appGuid, vid, vkey) {
+async function getApplicationFindings(appGuid, vid, vkey, brokerMetaData) {
     const getPolicyFindingsByApplicationResource = {
         resourceUri: `${veracodeConfig().findingsUri}/${appGuid}/findings`,
         queryAttribute1: 'size',
         queryValue1: '1000',
     };
 
-    const findingsResponse = await getResourceByAttribute(vid, vkey, getPolicyFindingsByApplicationResource);
+    const findingsResponse = await getResourceByAttribute(vid, vkey, getPolicyFindingsByApplicationResource , brokerMetaData);
 
     if (!findingsResponse._embedded) {
         console.log('No Policy scan found, lets look for sandbox scan findings');
@@ -310,7 +351,7 @@ async function getApplicationFindings(appGuid, vid, vkey) {
             queryValue1: '',
         };
 
-        const sandboxesResponse = await getResourceByAttribute(vid, vkey, getSandboxGUID);
+        const sandboxesResponse = await getResourceByAttribute(vid, vkey, getSandboxGUID , brokerMetaData);
 
         if (!sandboxesResponse._embedded) {
             console.log('No Policy scan found and no sandbox scan found.');
@@ -324,7 +365,7 @@ async function getApplicationFindings(appGuid, vid, vkey) {
                 queryValue1: sandboxGuid,
             };
 
-            const findingsResponse = await getResourceByAttribute(vid, vkey, getPolicyFindingsBySandboxResource);
+            const findingsResponse = await getResourceByAttribute(vid, vkey, getPolicyFindingsBySandboxResource, brokerMetaData);
 
             if (!findingsResponse._embedded) {
                 console.log('No Policy scan found and no sandbox scan found.');
@@ -440,7 +481,7 @@ function setScanResultError(scanResult, message) {
     return scanResult;
 }
 
-async function veracodePolicyVerification(vid, vkey, policyName, breakBuildOnInvalidPolicy) {
+async function veracodePolicyVerification(vid, vkey, policyName, breakBuildOnInvalidPolicy, brokerMetaData) {
     let policyStatus = false;
     try {
         if (breakBuildOnInvalidPolicy) {
@@ -453,7 +494,7 @@ async function veracodePolicyVerification(vid, vkey, policyName, breakBuildOnInv
                     queryValue2: true,
                 };
 
-                const response = await getResourceByAttribute(vid, vkey, resource);
+                const response = await getResourceByAttribute(vid, vkey, resource, brokerMetaData);
                 if (response && response?.page?.total_elements != 1) {
                     console.log('Invalid Veracode Policy name.')
                     policyStatus = true;
@@ -496,7 +537,7 @@ const resourceResponse = (appId, appGuid, oid) => {
     }
 }
 
-async function updateResource(vid, vkey, resource, appGuid) {
+async function updateResource(vid, vkey, resource, appGuid, brokerMetaData) {
     const resourceUri = resource.resourceUri;
     const resourceData = resource.resourceData;
     const host = veracodeConfig().hostName.US;
@@ -506,10 +547,22 @@ async function updateResource(vid, vkey, resource, appGuid) {
         vid = vid.split('-')[1] || '';
         vkey = vkey.split('-')[1] || '';
     }
-    const headers = {
-        'Authorization': calculateAuthorizationHeader(vid, vkey, host, queryParameter, '', 'PUT')
-    };
-    const appUrl = `https://${host}${resourceUri}/${appGuid}`;
+    let appUrl;
+    let headers;
+    
+    if(brokerMetaData?.originalUrl){
+        appUrl=`${brokerMetaData.originalUrl}/proxy${resourceUri}/${appGuid}`;
+         headers = {
+            'Authorization': calculateAuthorizationHeader(vid, vkey, host, queryParameter, '', 'PUT'),
+            'X-Target-Hostname' :host
+        };
+       
+    }else{
+        appUrl = `https://${host}${resourceUri}/${appGuid}`;
+        headers = {
+            'Authorization': calculateAuthorizationHeader(vid, vkey, host, queryParameter, '', 'PUT')
+        };
+    }
     try {
         const response = await axios.put(appUrl, resourceData, { headers });
         return response.data;
