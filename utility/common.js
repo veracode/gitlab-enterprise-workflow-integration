@@ -94,7 +94,7 @@ async function deleteResourceById(vid, vkey, resource, brokerMetaData) {
     let appUrl;
     let headers;
 
-    if(brokerMetaData?.originalUrl){
+    if(brokerMetaData?.clientUrl){
         headers = {
             Authorization: calculateAuthorizationHeaderV2({
                 id: vid,
@@ -105,7 +105,7 @@ async function deleteResourceById(vid, vkey, resource, brokerMetaData) {
             }),
             'X-Target-Hostname' :host
         }
-        appUrl = `${brokerMetaData.originalUrl}/proxy${resourceUri}/${resourceId}`
+        appUrl = `${brokerMetaData.clientUrl}/proxy${resourceUri}/${resourceId}`
 
     }else{
         headers = {
@@ -157,8 +157,8 @@ function getResourceDetails(vid, vkey, resource, brokerMetaData) {
     
     let appUrl;
     let headers;
-    if(brokerMetaData?.originalUrl){
-        appUrl= `${brokerMetaData.originalUrl}/proxy${resourceUri}${urlQueryParams}`;
+    if(brokerMetaData?.clientUrl){
+        appUrl= `${brokerMetaData.clientUrl}/proxy${resourceUri}${urlQueryParams}`;
         headers = {
         'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, urlQueryParams, 'GET'),
         'X-Target-Hostname': host
@@ -313,12 +313,12 @@ async function createResource(vid, vkey, resource, brokerMetaData) {
     let appUrl;
     let headers;
 
-    if(brokerMetaData?.originalUrl){
+    if(brokerMetaData?.clientUrl){
         headers = {
             'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, '', 'POST'),
             'X-Target-Hostname' :host
         };
-        appUrl = `${brokerMetaData.originalUrl}/proxy${resourceUri}`
+        appUrl = `${brokerMetaData.clientUrl}/proxy${resourceUri}`
     }else{
         headers = {
             'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, '', 'POST')
@@ -550,8 +550,8 @@ async function updateResource(vid, vkey, resource, appGuid, brokerMetaData) {
     let appUrl;
     let headers;
     
-    if(brokerMetaData?.originalUrl){
-        appUrl=`${brokerMetaData.originalUrl}/proxy${resourceUri}/${appGuid}`;
+    if(brokerMetaData?.clientUrl){
+        appUrl=`${brokerMetaData.clientUrl}/proxy${resourceUri}/${appGuid}`;
          headers = {
             'Authorization': calculateAuthorizationHeader(vid, vkey, host, queryParameter, '', 'PUT'),
             'X-Target-Hostname' :host
