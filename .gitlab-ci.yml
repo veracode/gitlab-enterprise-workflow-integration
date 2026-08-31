@@ -37,7 +37,25 @@ Cli Version Check:
 
       # Fetch latest Veracode CLI version
       echo "Fetching the latest Veracode CLI version"
-      export LATEST_CLI_VERSION=$(curl -s https://tools.veracode.com/veracode-cli/LATEST_VERSION)
+
+      # Check if BROKER_METADATA exists and use clientUrl if available
+      if [[ -n "$BROKER_METADATA" ]]; then
+        export BROKER_CLIENT_URL=$(echo "$BROKER_METADATA" | grep -o '"clientUrl":"[^"]*' | cut -d'"' -f4)
+        if [[ -n "$BROKER_CLIENT_URL" ]]; then
+          echo "Using Broker Client URL: $BROKER_CLIENT_URL"
+          export VERSION_URL="$BROKER_CLIENT_URL/proxy/veracode-cli/LATEST_VERSION"
+        else
+          export VERSION_URL="https://tools.veracode.com/veracode-cli/LATEST_VERSION"
+        fi
+      else
+        export VERSION_URL="https://tools.veracode.com/veracode-cli/LATEST_VERSION"
+      fi
+
+      if [[ -n "$BROKER_CLIENT_URL" ]]; then
+        export LATEST_CLI_VERSION=$(curl -s -H "X-Target-Hostname: tools.veracode.com" "$VERSION_URL")
+      else
+        export LATEST_CLI_VERSION=$(curl -s "$VERSION_URL")
+      fi
 
       # Validate the fetched version
       if [[ -z "$LATEST_CLI_VERSION" ]]; then
@@ -58,11 +76,19 @@ Cli Version Check:
       if [[ "$LOCAL_CLI_VERSION" != "$LATEST_CLI_VERSION" ]]; then
         echo "New version detected. Downloading Veracode CLI..."
 
-        export CLI_DOWNLOAD_URL="https://tools.veracode.com/veracode-cli/veracode-cli_${LATEST_CLI_VERSION}_linux_x86.tar.gz"
+        if [[ -n "$BROKER_CLIENT_URL" ]]; then
+          export CLI_DOWNLOAD_URL="$BROKER_CLIENT_URL/proxy/veracode-cli/veracode-cli_${LATEST_CLI_VERSION}_linux_x86.tar.gz"
+        else
+          export CLI_DOWNLOAD_URL="https://tools.veracode.com/veracode-cli/veracode-cli_${LATEST_CLI_VERSION}_linux_x86.tar.gz"
+        fi
         echo "CLI DOWNLOAD URL: ${CLI_DOWNLOAD_URL}"
 
         # Download and extract the CLI
-        curl -s -L "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
+        if [[ -n "$BROKER_CLIENT_URL" ]]; then
+          curl -s -L -H "X-Target-Hostname: tools.veracode.com" "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
+        else
+          curl -s -L "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
+        fi
         tar -xzf "${CLI_FOLDER}/veracode-cli.tar.gz" -C "${CLI_FOLDER}"
         
         # Move the extracted files into the install directory (flatten structure)
