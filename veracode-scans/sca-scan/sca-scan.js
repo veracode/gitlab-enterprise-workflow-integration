@@ -4,13 +4,26 @@ const { attacheResult, exitOnFailure, updateErrorMessage } = require('../../util
 const scaScanIssue = require('../../veracode-issues/scaScanIssue');
 const displayScanResult = require('../../displayScanResult');
 
-async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug) {
+async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug, brokerMetaData) {
   try {
-    let command = `curl -sSL https://download.sourceclear.com/ci.sh | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --recursive --allow-dirty`;
+    // Check if broker client is available and set up the download URL accordingly
+    let downloadUrl = 'https://download.sourceclear.com/ci.sh';
+    let curlHeaders = '';
+
+    if (brokerMetaData) {
+      const brokerData = JSON.parse(brokerMetaData);
+      const brokerClientUrl = brokerData?.clientUrl;
+      if (brokerClientUrl) {
+        downloadUrl = `${brokerClientUrl}/proxy/download.sourceclear.com/ci.sh`;
+        curlHeaders = '-H "X-Target-Hostname: download.sourceclear.com"';
+      }
+    }
+
+    let command = `curl -sSL ${curlHeaders} ${downloadUrl} | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --recursive --allow-dirty`;
     if(debug === "true")
       command += ' --debug';
     const output = execSync(command, { encoding: 'utf-8', env: { ...process.env, SRCCLR_API_TOKEN: scaAgenToken, SRCCLR_API_URL: scaUrl }, maxBuffer: 1024 * 1024 * 10 });
-    const jsonCommand = `curl -sSL https://download.sourceclear.com/ci.sh | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --json=scaScan.json --recursive --allow-dirty`;
+    const jsonCommand = `curl -sSL ${curlHeaders} ${downloadUrl} | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --json=scaScan.json --recursive --allow-dirty`;
     const jsonOutput = execSync(jsonCommand, { encoding: 'utf-8', env: { ...process.env, SRCCLR_API_TOKEN: scaAgenToken, SRCCLR_API_URL: scaUrl }, maxBuffer: 1024 * 1024 * 10 });
     if (output.includes("Full Report Details")) {
       const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');

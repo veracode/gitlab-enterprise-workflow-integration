@@ -2,9 +2,9 @@ const { getApplicationFindings } = require('../utility/common');
 const { VERACODE_STATIC_LABELS, VERACODE_FLAW_LABELS } = require('../utility/labels');
 const { listExistingOpenIssues, checkLabelExists, createLabels, createIssue } = require('../utility/service');
 const { parseVeracodeFlawID, getSeverityName, getVeracodeFlawID } = require('../utility/utils');
-async function policyScanIssue(applicationGuid, apiId, apiKey) {
+async function policyScanIssue(applicationGuid, apiId, apiKey, brokermetadata) {
     try{
-        const flawData = await getApplicationFindings(applicationGuid, apiId, apiKey);
+        const flawData = await getApplicationFindings(applicationGuid, apiId, apiKey ,brokermetadata);
         const isLabelExist = await checkLabelExists(VERACODE_STATIC_LABELS[1].name);
         const existingFlaws = {};
         if(!isLabelExist){
