@@ -56,7 +56,7 @@ async function veracodeScan() {
     }
     if (executeSca) {
         console.log(`Executing sca scan on ${projectName} repo for ${sourceBranch} branch`);
-        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug);
+        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug, brokerMetaData);
     }
     if (executeIac) {
         console.log(`Executing iac scan on ${projectName} repo for ${sourceBranch} branch`);
