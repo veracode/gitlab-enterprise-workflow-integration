@@ -9,11 +9,11 @@ const pipelineScanIssue = require('../../veracode-issues/pipelineScanIssue');
 const displayScanResult = require('../../displayScanResult');
 const { execSync } = require('child_process');
 
-async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug) {
+async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug, brokerMetaData) {
     const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
 
     try {
-        const isCredentialValid = await validateCredential(apiId, apiKey);
+        const isCredentialValid = await validateCredential(apiId, apiKey, brokerMetaData);
 
         if (!isCredentialValid) {
             await displayScanResult([], "Veracode credentials are invalid or expired.");
@@ -21,7 +21,7 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
             return;
         }
 
-        const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy);
+        const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy, brokerMetaData);
         if (invalidPolicy) {
             await displayScanResult([], "Invalid Veracode Policy name.");
             exitOnFailure(breakBuildOnInvalidPolicy);
@@ -65,7 +65,7 @@ async function pipelineScan(apiId, apiKey, appProfileName, filterMitigatedFlaws,
                     const isFilterMitigatedFlaws = filterMitigatedFlaws === 'true' ? true : filterMitigatedFlaws === 'false' ? false : filterMitigatedFlaws;
                     let mitigatedResult = resultsJSON;
                     if (isFilterMitigatedFlaws) {
-                        mitigatedResult = await mitigatedFlaws(apiId, apiKey, appProfileName, resultsJSON, veracodeArtifactsDir, artifactName);
+                        mitigatedResult = await mitigatedFlaws(apiId, apiKey, appProfileName, resultsJSON, veracodeArtifactsDir, artifactName, brokerMetaData);
                     }
                     // Filter findings
                     let filteredFindings = mitigatedResult.findings.filter((finding) => {
@@ -140,11 +140,11 @@ async function executePipelineScan(veracodeArtifactsDir, artifactName, apiId, ap
     }
 }
 
-async function mitigatedFlaws(apiId, apiKey, appProfileName, results, veracodeArtifactsDir, artifactName) {
+async function mitigatedFlaws(apiId, apiKey, appProfileName, results, veracodeArtifactsDir, artifactName, brokerMetaData) {
     let policyFindings = [];
     const LINE_NUMBER_SLOP = 3;
     try {
-        const responseData = await getApplicationByName(apiId, apiKey, appProfileName);
+        const responseData = await getApplicationByName(apiId, apiKey, appProfileName, brokerMetaData);
         const appDetail = isProfileExists(responseData, appProfileName);
         const applicationGuid = appDetail?.veracodeApp?.appGuid;
         policyFindings = await getApplicationFindings(applicationGuid, apiId, apiKey);

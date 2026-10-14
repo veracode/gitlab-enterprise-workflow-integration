@@ -9,14 +9,14 @@ const policyScanIssue = require('../../veracode-issues/policyScanIssue');
 const displayScanResult = require('../../displayScanResult');
 const exitStatus = true;
 
-async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, createprofile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug) {
+async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, createprofile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug, brokerMetaData) {
     try {
-        const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy);
+        const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy, brokerMetaData);
         if (invalidPolicy) {
             exitOnFailure(breakBuildOnInvalidPolicy);  
         }
         let policyResult = { scan: SCAN.POLICY_SCAN, fileName: appConfig().policyScanResult };
-        const resApp = await getVeracodeApplication(apiId, apiKey, appName, policyName, teams, createprofile, repoUrl);
+        const resApp = await getVeracodeApplication(apiId, apiKey, appName, policyName, teams, createprofile, repoUrl, brokerMetaData);
         const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
         try {
             const artifacts = await fs.promises.readdir(veracodeArtifactsDir);
@@ -29,7 +29,7 @@ async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, cr
         }
 
         try {
-            const result = await triggerPolicyScan(apiId, apiKey, policyResult, resApp, veracodeArtifactsDir, buildId, breakBuildOnError, userErrorMessage, createIssue, debug);
+            const result = await triggerPolicyScan(apiId, apiKey, policyResult, resApp, veracodeArtifactsDir, buildId, breakBuildOnError, userErrorMessage, createIssue, debug, brokerMetaData);
             if (result.status === STATUS.Findings) {
                 exitOnFailure(breakBuildOnFinding);
             }
@@ -48,7 +48,7 @@ async function policyScan(apiId, apiKey, appName, buildId, policyName, teams, cr
     }
 }
 
-async function triggerPolicyScan(apiId, apiKey, policyResult, resApp, artifactFilePath, buildId, breakBuildOnError, userErrorMessage, createIssue, debug) {
+async function triggerPolicyScan(apiId, apiKey, policyResult, resApp, artifactFilePath, buildId, breakBuildOnError, userErrorMessage, createIssue, debug, brokerMetaData) {
     console.log(`Veracode: Policy scan executing...`);
     // let policyScanCommand = `java -jar ${__dirname}/api-wrapper-LATEST/VeracodeJavaAPI.jar -action UploadAndScanByAppId -vid ${apiId} -vkey ${apiKey} -appid ${resApp?.appId} -filepath ${artifactFilePath} -version "${buildId}" -scanpollinginterval 30 - include -autoscan false -scanallnonfataltoplevelmodules false`;
     let debugCommand = `java -jar ${__dirname}/api-wrapper-LATEST/VeracodeJavaAPI.jar -action UploadAndScanByAppId -vid *** -vkey *** -appid ${resApp?.appId} -filepath ${artifactFilePath} -version "${buildId}" -scanpollinginterval 30 - include -autoscan true -scanallnonfataltoplevelmodules true -includenewmodules true -deleteincompletescan 2`;
@@ -84,7 +84,7 @@ async function triggerPolicyScan(apiId, apiKey, policyResult, resApp, artifactFi
         policyResult.message = `Error while executing veracode policy scan command : ${debugCommand}.`;
         exitOnFailure(breakBuildOnError);
     }
-    const scanStatus = await checkPolicyScanStatus(apiId, apiKey, resApp, scan_id);
+    const scanStatus = await checkPolicyScanStatus(apiId, apiKey, resApp, scan_id, brokerMetaData)
     console.log(`${appConfig().logPrefix} Policy scan status ${scanStatus}`);
 
     if (scanStatus === SCAN_RESPONSE_CODE.SCAN_TIME_OUT) {
@@ -94,10 +94,10 @@ async function triggerPolicyScan(apiId, apiKey, policyResult, resApp, artifactFi
         return policyResult;
     }
     const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
-    return getPolicyScanFindings(apiId, apiKey, policyResult, resApp, scan_id, veracodeArtifactsDir, createIssue);
+    return getPolicyScanFindings(apiId, apiKey, policyResult, resApp, scan_id, veracodeArtifactsDir, createIssue, brokerMetaData);
 }
 
-async function getPolicyScanFindings(apiId, apiKey, policyResult, resApp, scan_id, veracodeArtifactsDir, createIssue) {
+async function getPolicyScanFindings(apiId, apiKey, policyResult, resApp, scan_id, veracodeArtifactsDir, createIssue, brokerMetaData) {
     try {
         const debugCommand = `java -jar ${__dirname}/api-wrapper-LATEST/VeracodeJavaAPI.jar -vid *** -vkey *** -action detailedreport -buildid ${scan_id} -outputfilepath "report.xml"`;
         console.log(`Command to get the policy scan result : ${debugCommand}`);
@@ -115,7 +115,7 @@ async function getPolicyScanFindings(apiId, apiKey, policyResult, resApp, scan_i
         if (policyscanReport?.policy_results?.findings.length > 0) {
             await displayScanResult(policyscanReport?.policy_results?.findings);
             if(createIssue){
-                await policyScanIssue(resApp.appGuid,apiId,apiKey);
+                await policyScanIssue(resApp.appGuid,apiId,apiKey, brokerMetaData);
             }
             let issue;
             policyResult.result = JSON.stringify(policyscanReport, null, 2);
@@ -144,7 +144,7 @@ async function getPolicyScanFindings(apiId, apiKey, policyResult, resApp, scan_i
     return policyResult;
 }
 
-async function checkPolicyScanStatus(apiId, apiKey, resApp, scan_id) {
+async function checkPolicyScanStatus(apiId, apiKey, resApp, scan_id, brokerMetaData) {
     let endTime = new Date(new Date().getTime() + veracodeConfig().scanStatusApiTimeout);
     let responseCode = SCAN_RESPONSE_CODE.IN_PROGRESS;
     let moduleSelectionCount = 0;
@@ -153,7 +153,7 @@ async function checkPolicyScanStatus(apiId, apiKey, resApp, scan_id) {
     while (true) {
         await sleep(veracodeConfig().pollingInterval);
         console.log(`${appConfig().logPrefix} veracode: Checking Scan Results for scan_id: ${scan_id}:`);
-        const statusUpdate = await getPolicyScanStatus(apiId, apiKey, resApp.appGuid, scan_id);
+        const statusUpdate = await getPolicyScanStatus(apiId, apiKey, resApp.appGuid, scan_id, brokerMetaData);
         console.log(`${appConfig().logPrefix} policy scan status from platform : ${JSON.stringify(statusUpdate)}`)
 
         if (statusUpdate.status === PLATFORM_SCAN_STATUS.MODULE_SELECTION_REQUIRED || statusUpdate.status === PLATFORM_SCAN_STATUS.PRE_SCAN_SUCCESS) {
@@ -193,13 +193,13 @@ async function checkPolicyScanStatus(apiId, apiKey, resApp, scan_id) {
     return SCAN_RESPONSE_CODE.FINISHED;
 }
 
-async function getPolicyScanStatus(vid, vkey, appGuid, buildId) {
+async function getPolicyScanStatus(vid, vkey, appGuid, buildId, brokerMetaData) {
     let resource = {
         resourceUri: `${veracodeConfig().applicationUri}/${appGuid}`,
         queryAttribute: '',
         queryValue: ''
     };
-    const response = await getResourceByAttribute(vid, vkey, resource);
+    const response = await getResourceByAttribute(vid, vkey, resource, brokerMetaData);
     const scans = response.scans;
     for (let i = 0; i < scans.length; i++) {
         const scanUrl = scans[i].scan_url;
