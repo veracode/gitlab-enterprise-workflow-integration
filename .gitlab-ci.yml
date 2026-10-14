@@ -140,6 +140,13 @@ Auto Package:
     - git clone --no-checkout ${CLONE_URL}
     - git -C ${PROJECT_PATH} checkout ${COMMIT_SHA}
     - cd $(basename -s .git ${CLONE_URL})
+    - |
+      if [ -n "${PREDEPENDENCY_COMMAND:-}" ]; then
+        echo "Executing pre-dependency command: ${PREDEPENDENCY_COMMAND}"
+        sh -c "${PREDEPENDENCY_COMMAND}"
+      else
+        echo "No pre-dependency command provided."
+      fi
     - cd ../../
     - |
       if [ "$ENABLE_DEBUG" = "true" ]; then
@@ -198,6 +205,13 @@ SCA:
     - ${DEFAULT_RUNNER}
   script:
     - mkdir -p $ARTIFACTS_FOLDER
+    - |
+      if [ -n "${PREDEPENDENCY_COMMAND:-}" ]; then
+        echo "Executing pre-dependency command: ${PREDEPENDENCY_COMMAND}"
+        sh -c "${PREDEPENDENCY_COMMAND}"
+      else
+        echo "No pre-dependency command provided."
+      fi
     - npm i
     - node ./veracodeScan.js
   <<: *artifacts_template
