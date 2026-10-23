@@ -21,6 +21,10 @@ async function cancelOldPipeline() {
       return;
     }
 
+    // Find the current pipeline in the list to get its full timestamp with milliseconds
+    const currentPipeline = pipelines.find(p => p.id === Number(currentPipelineId));
+    const currentPipelineCreatedAtFull = currentPipeline ? currentPipeline.created_at : currentPipelineCreatedAt;
+
     for (const pipeline of pipelines) {
       const pipelineId = pipeline.id;
 
@@ -31,7 +35,7 @@ async function cancelOldPipeline() {
       }
 
       // Convert current pipeline creation time to epoch milliseconds
-      const currentEpoch = new Date(currentPipelineCreatedAt).getTime();
+      const currentEpoch = new Date(currentPipelineCreatedAtFull).getTime();
       const createdEpoch = new Date(pipeline.created_at).getTime();
 
       // Skip newer pipelines
