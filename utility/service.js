@@ -171,4 +171,36 @@ async function cancelPipeline(hostName, veracodeProjectId, pipelineId) {
     }
 }
 
-module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment, fetchAllPipelines, getPipelineVariables, cancelPipeline}
+async function updateCommitStatus(mrSha, state, pipelineName, ciPipelineUrl, description, debug) {
+    const isDebug = debug === true || debug === "true";
+
+    if (isDebug) {
+        console.log('#### DEBUG - Update Commit Status ####');
+        console.log({ mrSha, state, pipelineName, ciPipelineUrl, description, hostName, projectId });
+        console.log('#### DEBUG - Update Commit Status ####');
+    }
+
+    try {
+        const url = `https://${hostName}/api/v4/projects/${projectId}/statuses/${mrSha}`;
+        const reqData = {
+            state: state,
+            name: pipelineName,
+            target_url: ciPipelineUrl,
+            description: description
+        };
+
+        const response = await axios.post(url, reqData, headers);
+        if (response.status >= 200 && response.status < 300) {
+            console.log("Commit status updated successfully");
+            return response.data;
+        } else {
+            console.error("MR couldn't be updated");
+            return null;
+        }
+    } catch (error) {
+        console.error("MR couldn't be updated:", error.response?.data || error.message);
+        return null;
+    }
+}
+
+module.exports = {checkLabelExists, createLabels, createIssue, listExistingOpenIssues, createWikiPage, createComment, fetchAllPipelines, getPipelineVariables, cancelPipeline, updateCommitStatus}

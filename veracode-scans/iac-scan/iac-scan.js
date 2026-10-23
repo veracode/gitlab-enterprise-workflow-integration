@@ -1,24 +1,52 @@
 const fs = require('fs');
 const path = require('path');
-const { exitOnFailure, updateErrorMessage, uploadArtifact } = require('../../utility/utils'); 
+const { exitOnFailure, updateErrorMessage, uploadArtifact } = require('../../utility/utils');
 const execa = require('execa');
 const displayScanResult = require('../../displayScanResult');
+const { veracodeConfig } = require('../../config');
+const { getResourceByAttribute } = require("../../utility/common")
+const { updateCommitStatus } = require('../../utility/service');
 
-async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug) { 
+async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug, policyName, commitSha, pipelineName, ciPipelineUrl) {
   const veracodeDir = path.dirname(require.main.filename);
   const veracodeCliPath = path.resolve(veracodeDir, 'veracode-cli');
   const veracodeExecutable = path.join(veracodeCliPath, 'veracode');
   const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
   console.log("Scan Started");
   let sourcePath;
-  
+
   try {
     sourcePath = resolveSourcePath();
   } catch (err) {
+    await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, `${pipelineName} failed`, debug);
     console.error('Failed to resolve source path:', err.message);
     process.exit(1);
   }
-  
+
+
+  let addPolicyFlag = false
+  if (policyName != '') {
+    let policyStatus = { isValid: false, reason: '' };
+    await veracodePolicyVerificationIac(process.env.VERACODE_API_ID, process.env.VERACODE_API_KEY, policyName, policyStatus)
+    console.log(`Policy evaluation required for policy : ${policyName}`)
+    if (policyStatus.isValid) {
+      // policy exists and has container rules
+      console.log(`Downloading policy: ${policyName}`)
+      downloadPolicy(veracodeExecutable, policyName, debug)
+      addPolicyFlag = true
+    } else {
+      if (policyStatus.reason === PolicyValidationReason.INVALID_POLICY) {
+        console.error(`Invalid Veracode Policy name: ${policyName}`)
+        exitOnFailure(true)
+      } else {
+        // No container rules 
+        console.warn(`No matching IAC rules available in policy: ${policyName}`)
+      }
+    }
+  } else {
+    console.warn("Missing Veracode Policy name in the config")
+  }
+
   try {
     await execa(
       veracodeExecutable,
@@ -28,6 +56,7 @@ async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, use
         '--type', 'directory',
         '--format', 'json',
         '--output', 'results.json',
+        ...(addPolicyFlag ? ['--policy', `${policyName}.rego`] : []),
         ...(debug === "true" ? ['--verbose'] : [])
       ],
       {
@@ -47,6 +76,7 @@ async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, use
         '--type', 'directory',
         '--format', 'table',
         '--output', 'results.txt',
+        ...(addPolicyFlag ? ['--policy', `${policyName}.rego`] : []),
         ...(debug === "true" ? ['--verbose'] : [])
       ],
       {
@@ -61,9 +91,10 @@ async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, use
     );
 
   } catch (error) {
+    await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, `${pipelineName} failed`, debug);
     console.log("Error while executing IAC scan :");
     console.log(error);
-  } 
+  }
 
   try {
     console.log('Listing files in Veracode directory...');
@@ -73,17 +104,20 @@ async function iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, use
     if (jsonOutput?.vulnerabilities?.matches?.length == 0 && !jsonOutput["policy-results"][0].failures) {
       console.log(tableOutput);
       console.log(`Veracode IAC scan executed successfully. No Vulnerabilities found !!`);
+      await updateCommitStatus(commitSha, 'success', pipelineName, ciPipelineUrl, `${pipelineName} no findings`, debug);
     } else {
       await uploadArtifact(veracodeArtifactsDir,"IacScan","IacScan.json",JSON.stringify(resultsJSON, null, 2));
       console.log(`Vulnerability detected in the repository !!`);
       console.error(tableOutput);
       await displayScanResult(resultsJSON);
+      await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, `${pipelineName} findings`, debug);
       exitOnFailure(breakBuildOnError);
     }
   } catch (error) {
     console.log(breakBuildOnError)
     error = updateErrorMessage(breakBuildOnError, userErrorMessage, error.message);
     console.error(`Error occurred during IAC scan: ${error}`);
+    await updateCommitStatus(commitSha, 'failed', pipelineName, ciPipelineUrl, `${pipelineName} failed`, debug);
     exitOnFailure(breakBuildOnError);
   }
 }
@@ -131,5 +165,69 @@ function resolveSourcePath() {
   console.log('Using source path:', sourcePath);
   return sourcePath;
 }
+
+function downloadPolicy(veracodeExecutable, policyName, debug) {
+  try {
+    execa(
+      veracodeExecutable,
+      [
+        `policy`,
+        `get`,
+        `${policyName}`,
+        ...(debug === "true" ? ['--verbose'] : [])
+      ],
+      {
+        reject: false,
+        stderr: 'inherit',
+        stdout: 'inherit',
+        env: {
+          VERACODE_API_KEY_ID: process.env.VERACODE_API_ID,
+          VERACODE_API_KEY_SECRET: process.env.VERACODE_API_KEY
+        }
+      }
+    )
+
+  } catch (error) {
+    console.log(`Error while downloading the policy: ${policyName}`);
+    console.log(error);
+    exitOnFailure(true)
+  }
+}
+
+function hasContainerRules(findingRules) {
+  return findingRules.some(rules =>
+    rules.scan_type.some((scantype) => scantype.toLowerCase() === "container")
+  );
+}
+
+const PolicyValidationReason = Object.freeze({
+  INVALID_POLICY: 'INVALID_POLICY',
+  NO_CONTAINER_RULES: 'NO_CONTAINER_RULES',
+});
+
+async function veracodePolicyVerificationIac(vid, vkey, policyName, policyStatus) {
+  try {
+    const resource = {
+      resourceUri: veracodeConfig().policyUri,
+      queryAttribute1: 'name',
+      queryValue1: encodeURIComponent(policyName),
+      queryAttribute2: 'name_exact',
+      queryValue2: true,
+    };
+
+    const response = await getResourceByAttribute(vid, vkey, resource);
+    if (response && response?.page?.total_elements === 0) {
+      policyStatus.reason = PolicyValidationReason.INVALID_POLICY
+    } else if (!hasContainerRules(response._embedded.policy_versions[0].finding_rules)) {
+      policyStatus.reason = PolicyValidationReason.NO_CONTAINER_RULES
+    } else {
+      policyStatus.isValid = true
+    }
+
+  } catch (e) {
+    throw e;
+  }
+}
+
 
 module.exports = iacScan;

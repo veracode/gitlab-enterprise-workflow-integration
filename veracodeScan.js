@@ -36,30 +36,35 @@ async function veracodeScan() {
 
     const repoUrl = process.env.PROJECT_URL;
     const debug = process.env.ENABLE_DEBUG;
+    const brokerMetaData = process.env.BROKER_METADATA;
+
+    const commitSha = process.env.COMMIT_SHA;
+    const pipelineName = process.env.PIPELINE_NAME;
+    const ciPipelineUrl = process.env.CI_PIPELINE_URL;
 
     if (executePipeline) {
         console.log(`Executing pipeline scan on ${projectName} repo for ${sourceBranch} branch`);
-        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug);
+        await pipelineScan(apiId, appKey, appProfileName, filterMitigatedFlaws, breakBuildOnFinding, breakBuildOnError, userErrorMessage, policyName, breakBuildOnInvalidPolicy, createIssue, debug, brokerMetaData, commitSha, pipelineName, ciPipelineUrl);
     }
     if (executeSandbox) {
         console.log(`Executing sandbox scan on ${projectName} repo for ${sourceBranch} branch`);
-        sandboxScan(apiId, appKey, sourceBranch, policyName, '', createProfile, ciPipelineId, appProfileName, breakBuildOnInvalidPolicy, repoUrl, debug)
+        sandboxScan(apiId, appKey, sourceBranch, policyName, '', createProfile, ciPipelineId, appProfileName, breakBuildOnInvalidPolicy, repoUrl, debug, brokerMetaData)
     }
     if (executePolicy) {
         console.log(`Executing policy scan on ${projectName} repo for ${sourceBranch} branch`);
-        await policyScan(apiId, appKey, appProfileName, ciPipelineId, policyName, '', createProfile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug);
+        await policyScan(apiId, appKey, appProfileName, ciPipelineId, policyName, '', createProfile, breakBuildOnFinding, breakBuildOnError, userErrorMessage, breakBuildOnInvalidPolicy, createIssue, repoUrl, debug, brokerMetaData);
     }
     if (executeRemoveSandbox) {
         console.log(`Executing removed sandbox scan on ${projectName} repo for ${sourceBranch} branch`);
-        removeSandboxScan(apiId, appKey, sourceBranch, appProfileName)
+        removeSandboxScan(apiId, appKey, sourceBranch, appProfileName, brokerMetaData)
     }
     if (executeSca) {
         console.log(`Executing sca scan on ${projectName} repo for ${sourceBranch} branch`);
-        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug);
+        await scaScan(sourceRepoCloneUrl, scaAgenToken, scaUrl, sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, createIssue, debug, brokerMetaData, commitSha, pipelineName, ciPipelineUrl);
     }
     if (executeIac) {
         console.log(`Executing iac scan on ${projectName} repo for ${sourceBranch} branch`);
-        await iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug)
+        await iacScan(sourceBranch, breakBuildOnFinding, breakBuildOnError, userErrorMessage, debug, policyName, commitSha, pipelineName, ciPipelineUrl)
     }
 }
 veracodeScan();
