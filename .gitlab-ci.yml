@@ -52,11 +52,7 @@ Cli Version Check:
         export VERSION_URL="https://tools.veracode.com/veracode-cli/LATEST_VERSION"
       fi
 
-      if [[ -n "$BROKER_CLIENT_URL" ]]; then
-        export LATEST_CLI_VERSION=$(curl -s -H "X-Target-Hostname: tools.veracode.com" "$VERSION_URL")
-      else
-        export LATEST_CLI_VERSION=$(curl -s "$VERSION_URL")
-      fi
+      export LATEST_CLI_VERSION=$(curl -s "$VERSION_URL")
 
       # Validate the fetched version
       if [[ -z "$LATEST_CLI_VERSION" ]]; then
@@ -85,11 +81,7 @@ Cli Version Check:
         echo "CLI DOWNLOAD URL: ${CLI_DOWNLOAD_URL}"
 
         # Download and extract the CLI
-        if [[ -n "$BROKER_CLIENT_URL" ]]; then
-          curl -s -L -H "X-Target-Hostname: tools.veracode.com" "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
-        else
-          curl -s -L "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
-        fi
+        curl -s -L "${CLI_DOWNLOAD_URL}" -o "${CLI_FOLDER}/veracode-cli.tar.gz"
         tar -xzf "${CLI_FOLDER}/veracode-cli.tar.gz" -C "${CLI_FOLDER}"
         
         # Move the extracted files into the install directory (flatten structure)

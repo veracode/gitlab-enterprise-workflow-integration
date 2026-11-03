@@ -9,7 +9,6 @@ async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuild
   try {
     // Check if broker client is available and set up the download URL accordingly
     let downloadUrl = 'https://download.sourceclear.com/ci.sh';
-    let curlHeaders = '';
     const veracodeArtifactsDir = path.join(__dirname, '../../veracode-artifacts');
     if (!fs.existsSync(veracodeArtifactsDir)) {
       fs.mkdirSync(veracodeArtifactsDir, { recursive: true });
@@ -21,11 +20,10 @@ async function scaScan(clone_url, scaAgenToken, scaUrl, sourceBranch, breakBuild
       const brokerClientUrl = brokerData?.clientUrl;
       if (brokerClientUrl) {
         downloadUrl = `${brokerClientUrl}/proxy/download.sourceclear.com/ci.sh`;
-        curlHeaders = '-H "X-Target-Hostname: download.sourceclear.com"';
       }
     }
 
-    let command = `curl -sSL ${curlHeaders} ${downloadUrl} | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --json=${scaScanJsonPath} --show-cli --recursive --allow-dirty`;
+    let command = `curl -sSL ${downloadUrl} | sh -s -- scan --url ${clone_url} --ref ${sourceBranch} --json=${scaScanJsonPath} --show-cli --recursive --allow-dirty`;
     if(debug === "true")
       command += ' --debug';
     const output = execSync(command, { encoding: 'utf-8', env: { ...process.env, SRCCLR_API_TOKEN: scaAgenToken, SRCCLR_API_URL: scaUrl }, maxBuffer: 1024 * 1024 * 10 });

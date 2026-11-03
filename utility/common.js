@@ -102,8 +102,7 @@ async function deleteResourceById(vid, vkey, resource, brokerMetaData) {
                 host: host,
                 url: queryUrl,
                 method: 'DELETE',
-            }),
-            'X-Target-Hostname' :host
+            })
         }
         appUrl = `${brokerMetaData.clientUrl}/proxy${resourceUri}/${resourceId}`
 
@@ -160,8 +159,7 @@ function getResourceDetails(vid, vkey, resource, brokerMetaData) {
     if(brokerMetaData?.clientUrl){
         appUrl= `${brokerMetaData.clientUrl}/proxy${resourceUri}${urlQueryParams}`;
         headers = {
-        'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, urlQueryParams, 'GET'),
-        'X-Target-Hostname': host
+        'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, urlQueryParams, 'GET')
         };
     }else{
         appUrl = `https://${host}${resourceUri}${urlQueryParams}`;
@@ -315,8 +313,7 @@ async function createResource(vid, vkey, resource, brokerMetaData) {
 
     if(brokerMetaData?.clientUrl){
         headers = {
-            'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, '', 'POST'),
-            'X-Target-Hostname' :host
+            'Authorization': calculateAuthorizationHeader(vid, vkey, host, resourceUri, '', 'POST')
         };
         appUrl = `${brokerMetaData.clientUrl}/proxy${resourceUri}`
     }else{
@@ -553,10 +550,9 @@ async function updateResource(vid, vkey, resource, appGuid, brokerMetaData) {
     if(brokerMetaData?.clientUrl){
         appUrl=`${brokerMetaData.clientUrl}/proxy${resourceUri}/${appGuid}`;
          headers = {
-            'Authorization': calculateAuthorizationHeader(vid, vkey, host, queryParameter, '', 'PUT'),
-            'X-Target-Hostname' :host
+            'Authorization': calculateAuthorizationHeader(vid, vkey, host, queryParameter, '', 'PUT')
         };
-       
+
     }else{
         appUrl = `https://${host}${resourceUri}/${appGuid}`;
         headers = {
