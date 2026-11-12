@@ -1,5 +1,6 @@
 const { execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const { attacheResult, exitOnFailure, updateErrorMessage } = require('../../utility/utils');
 const scaScanIssue = require('../../veracode-issues/scaScanIssue');
 const displayScanResult = require('../../displayScanResult');
