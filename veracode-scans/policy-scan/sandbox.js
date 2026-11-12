@@ -5,10 +5,10 @@ const { getVeracodeApplication, veracodePolicyVerification } = require('../../ut
 const execa = require('execa');
 const { exitOnFailure } = require('../../utility/utils');
 
-async function sandboxScan(apiId, apiKey, sourceBranch, policyName, teams, createprofile, buildId, appName, breakBuildOnInvalidPolicy, repoUrl, debug) {
+async function sandboxScan(apiId, apiKey, sourceBranch, policyName, teams, createprofile, buildId, appName, breakBuildOnInvalidPolicy, repoUrl, debug, brokerMetaData) {
     let resApp;
     try {
-        const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy);
+        const invalidPolicy = await veracodePolicyVerification(apiId, apiKey, policyName, breakBuildOnInvalidPolicy, brokerMetaData);
         if (invalidPolicy) {
             exitOnFailure(breakBuildOnInvalidPolicy);  
         }
@@ -16,7 +16,7 @@ async function sandboxScan(apiId, apiKey, sourceBranch, policyName, teams, creat
         console.log(`Error while fetching policy details for ${policyName}`)
     }
     try {
-        resApp = await getVeracodeApplication(apiId, apiKey, appName, policyName, teams, createprofile, repoUrl);
+        resApp = await getVeracodeApplication(apiId, apiKey, appName, policyName, teams, createprofile, repoUrl, brokerMetaData);
     } catch (error) {
         console.log(`Error while retriving application details for ${appName}`, error);
         return;
